@@ -1,23 +1,44 @@
 import { WardenConfigError, WardenDenied, WardenPending } from './errors.js';
 import { isToolUseBlock } from './anthropic.js';
-import type { AnthropicLike, AnthropicMessage, AnthropicToolUseBlock } from './anthropic.js';
+import type {
+  AnthropicLike,
+  AnthropicMessage,
+} from './anthropic.js';
+import {
+  isOpenAIChatToolCall,
+  normalizeChatToolCall,
+} from './openai.js';
+import type {
+  OpenAIChatCompletion,
+  OpenAIChatLike,
+  OpenAIChatToolCall,
+} from './openai.js';
 import { inspectToolUse } from './transport.js';
-import type { WardenOptions } from './types.js';
+import type { NormalizedToolCall, WardenOptions } from './types.js';
 
 /**
- * Wrap an Anthropic-like client so every `tool_use` block in the
- * response is inspected by warden before the caller sees it.
+ * Wrap an Anthropic-like or OpenAI-like client so every tool call the
+ * model emits is inspected by warden before the caller sees it.
  *
- * Implementation uses two layered `Proxy`s: one on the client to
- * intercept `messages`, and one on `messages` to intercept `create`.
- * Everything else (`models.list`, `client.beta.*`, etc.) routes
- * through `Reflect` unchanged so this stays a drop-in wrapper.
+ * Detection is structural and runs once at wrap time:
+ *
+ * - `client.messages.create` → Anthropic. We intercept the response,
+ *   walk `content[]` for `tool_use` blocks, normalize them, inspect.
+ * - `client.chat.completions.create` → OpenAI. We intercept the
+ *   response, walk `choices[].message.tool_calls`, JSON-parse the
+ *   `arguments` string, normalize, inspect.
+ *
+ * Anything else is rejected with {@link WardenConfigError} — we'd
+ * rather fail loudly at boot than silently pass a stranger client
+ * through unwrapped. Other client properties (`client.beta`,
+ * `client.models`, custom subclasses) pass through unchanged via the
+ * outer `Proxy`.
  *
  * Behavior is governed by `opts.mode`:
  *
- * - `'enforce'` (default): the first denied `tool_use` aborts the
+ * - `'enforce'` (default): the first denied tool call aborts the
  *   call with {@link WardenDenied}; a pending verdict aborts with
- *   {@link WardenPending}. The Anthropic response is discarded. The
+ *   {@link WardenPending}. The upstream response is discarded. The
  *   `onVerdict` callback fires for that block before the throw, so
  *   observe-mode telemetry stays consistent across both modes.
  *
@@ -27,65 +48,130 @@ import type { WardenOptions } from './types.js';
  *   rollouts where you need warden visibility without breaking the
  *   agent.
  */
-export function wardenWrap<T extends AnthropicLike>(client: T, opts: WardenOptions): T {
+export function wardenWrap<T extends AnthropicLike>(client: T, opts: WardenOptions): T;
+export function wardenWrap<T extends OpenAIChatLike>(client: T, opts: WardenOptions): T;
+export function wardenWrap(
+  client: AnthropicLike | OpenAIChatLike,
+  opts: WardenOptions,
+): AnthropicLike | OpenAIChatLike {
   validateOptions(opts);
-  if (!client || typeof client.messages?.create !== 'function') {
-    throw new WardenConfigError('wardenWrap: client must expose messages.create()');
-  }
+  const kind = detectClient(client);
+  if (kind === 'anthropic') return wrapAnthropic(client as AnthropicLike, opts);
+  return wrapOpenAIChat(client as OpenAIChatLike, opts);
+}
 
+type ClientKind = 'anthropic' | 'openai-chat';
+
+function detectClient(client: unknown): ClientKind {
+  if (!client || typeof client !== 'object') {
+    throw new WardenConfigError('wardenWrap: client must be an object');
+  }
+  const c = client as Record<string, unknown>;
+  const anthropicCreate = (c['messages'] as { create?: unknown } | undefined)?.create;
+  if (typeof anthropicCreate === 'function') return 'anthropic';
+  const openaiCreate = (
+    (c['chat'] as { completions?: { create?: unknown } } | undefined)?.completions
+  )?.create;
+  if (typeof openaiCreate === 'function') return 'openai-chat';
+  throw new WardenConfigError(
+    'wardenWrap: client must expose messages.create() (Anthropic) or chat.completions.create() (OpenAI)',
+  );
+}
+
+function wrapAnthropic(client: AnthropicLike, opts: WardenOptions): AnthropicLike {
   const messagesProxy = new Proxy(client.messages, {
     get(target, prop, receiver) {
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
-      // Bind to `target` so the upstream SDK's internal `this`
-      // expectations (auth headers, base URL config) stay intact.
-      return wrappedCreate.bind(null, target, opts);
+      return async (...args: unknown[]): Promise<AnthropicMessage> => {
+        const result = await Reflect.apply(target.create, target, args);
+        const calls = extractAnthropicCalls(result);
+        await inspectAllToolCalls(calls, opts);
+        return result;
+      };
     },
   });
-
   return new Proxy(client, {
     get(target, prop, receiver) {
       if (prop === 'messages') return messagesProxy;
       return Reflect.get(target, prop, receiver);
     },
-  }) as T;
+  });
 }
 
-async function wrappedCreate(
-  messages: AnthropicLike['messages'],
-  opts: WardenOptions,
-  ...args: unknown[]
-): Promise<AnthropicMessage> {
-  const result = await Reflect.apply(messages.create, messages, args);
-  await inspectAllToolUses(result, opts);
-  return result;
+function wrapOpenAIChat(client: OpenAIChatLike, opts: WardenOptions): OpenAIChatLike {
+  const completionsProxy = new Proxy(client.chat.completions, {
+    get(target, prop, receiver) {
+      if (prop !== 'create') return Reflect.get(target, prop, receiver);
+      return async (...args: unknown[]): Promise<OpenAIChatCompletion> => {
+        const result = await Reflect.apply(target.create, target, args);
+        const calls = extractOpenAIChatCalls(result);
+        await inspectAllToolCalls(calls, opts);
+        return result;
+      };
+    },
+  });
+  const chatProxy = new Proxy(client.chat, {
+    get(target, prop, receiver) {
+      if (prop === 'completions') return completionsProxy;
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      if (prop === 'chat') return chatProxy;
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+function extractAnthropicCalls(result: AnthropicMessage): NormalizedToolCall[] {
+  const content = result.content ?? [];
+  return content.filter(isToolUseBlock).map((b) => ({
+    id: b.id,
+    name: b.name,
+    input: b.input,
+  }));
+}
+
+function extractOpenAIChatCalls(result: OpenAIChatCompletion): NormalizedToolCall[] {
+  const choices = result.choices ?? [];
+  const out: NormalizedToolCall[] = [];
+  for (const choice of choices) {
+    const calls = choice.message?.tool_calls;
+    if (!Array.isArray(calls)) continue;
+    for (const call of calls as OpenAIChatToolCall[]) {
+      if (!isOpenAIChatToolCall(call)) continue;
+      out.push(normalizeChatToolCall(call));
+    }
+  }
+  return out;
 }
 
 /**
- * Walk every `tool_use` block in the response, inspect it, fire the
- * verdict callback, and (in enforce mode) throw on the first
- * deny/pending. Inspection stops at the first throw — once one
- * block is denied, the call is dead and subsequent inspections
- * would just add noise to the ledger.
+ * Inspect every normalized tool call in order, fire the verdict
+ * callback, and (in enforce mode) throw on the first deny/pending.
+ * Inspection stops at the first throw — once one call is denied, the
+ * upstream response is dead and subsequent inspections would just add
+ * noise to the ledger.
  */
-async function inspectAllToolUses(
-  result: AnthropicMessage,
+async function inspectAllToolCalls(
+  calls: NormalizedToolCall[],
   opts: WardenOptions,
 ): Promise<void> {
   const enforce = (opts.mode ?? 'enforce') === 'enforce';
-  const blocks: AnthropicToolUseBlock[] = (result.content ?? []).filter(isToolUseBlock);
-  for (const block of blocks) {
-    const verdict = await inspectToolUse(block, opts);
+  for (const call of calls) {
+    const verdict = await inspectToolUse(call, opts);
     if (opts.onVerdict) {
       await opts.onVerdict(verdict, {
-        toolName: block.name,
-        toolUseId: block.id,
-        toolInput: block.input,
+        toolName: call.name,
+        toolUseId: call.id,
+        toolInput: call.input,
       });
     }
     if (!enforce) continue;
     if (verdict.kind === 'deny') {
       throw new WardenDenied({
-        toolName: block.name,
+        toolName: call.name,
         reasons: verdict.payload.reasons,
         reviewReasons: verdict.payload.review_reasons,
         intentCategory: verdict.payload.intent_category,
@@ -93,7 +179,7 @@ async function inspectAllToolUses(
     }
     if (verdict.kind === 'pending') {
       throw new WardenPending({
-        toolName: block.name,
+        toolName: call.name,
         correlationId: verdict.correlationId,
       });
     }

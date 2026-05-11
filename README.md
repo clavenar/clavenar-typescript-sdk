@@ -1,8 +1,9 @@
 # @warden/ai-sdk
 
 TypeScript SDK for [Agent Warden](https://warden.vanteguardlabs.com).
-Wraps your Anthropic client and inspects every `tool_use` block
-against your policies *before* your tool-execution loop runs it.
+Wraps your Anthropic or OpenAI client and inspects every tool call
+the model emits against your policies *before* your tool-execution
+loop runs it.
 
 ```ts
 import Anthropic from '@anthropic-ai/sdk';
@@ -30,15 +31,39 @@ try {
 }
 ```
 
+### OpenAI
+
+Same wrap, same options — the SDK auto-detects the client shape:
+
+```ts
+import OpenAI from 'openai';
+import { wardenWrap, WardenDenied } from '@warden/ai-sdk';
+
+const client = wardenWrap(new OpenAI(), {
+  endpoint: 'http://localhost:8088',
+});
+
+const completion = await client.chat.completions.create({
+  model: 'gpt-4-turbo',
+  tools: [/* your tool schemas */],
+  messages: [{ role: 'user', content: 'delete the alice user' }],
+});
+// Every entry in choices[].message.tool_calls is inspected before
+// this promise resolves; denied calls raise WardenDenied just like
+// the Anthropic path.
+```
+
 ## What it does
 
-`wardenWrap` is a transparent `Proxy` around your Anthropic client.
-The only method it intercepts is `messages.create`; every other
-property — `client.beta`, `client.models`, custom subclasses — passes
-through unchanged.
+`wardenWrap` is a transparent `Proxy` around your model client.
+Detection is structural: a client with `messages.create` is wrapped
+as Anthropic, a client with `chat.completions.create` as OpenAI.
+Every other property — `client.beta`, `client.models`, custom
+subclasses — passes through unchanged.
 
-On every response, every `tool_use` content block is sent to
-warden-lite's `POST /mcp` for inspection. The verdict drives:
+On every response, every tool call (Anthropic `tool_use` content
+block / OpenAI `tool_calls` entry) is sent to warden-lite's
+`POST /mcp` for inspection. The verdict drives:
 
 | mode | verdict | result |
 |---|---|---|
@@ -54,8 +79,12 @@ verdicts.
 ## Install
 
 ```sh
-pnpm add @warden/ai-sdk @anthropic-ai/sdk
+pnpm add @warden/ai-sdk @anthropic-ai/sdk     # Anthropic
+pnpm add @warden/ai-sdk openai                # OpenAI
 ```
+
+`@anthropic-ai/sdk` and `openai` are peer dependencies — install
+whichever ones you use. The SDK has no hard import on either.
 
 Run a warden-lite instance somewhere reachable. The
 [`warden-lite`](https://github.com/vanteguardlabs/warden-lite) binary
@@ -110,13 +139,14 @@ end-to-end against a local warden-lite:
   "jsonrpc": "2.0",
   "method":  "tools/call",
   "params":  { "name": "<tool name>", "arguments": <tool input> },
-  "id":      "<Anthropic tool_use id>"
+  "id":      "<provider tool-call id>"
 }
 ```
 
-The Anthropic tool_use id (`toolu_*`) round-trips into warden's audit
-ledger so a single ledger lookup correlates back to the model's
-exact call. See [`warden-lite/src/proxy.rs`](https://github.com/vanteguardlabs/warden-lite/blob/main/src/proxy.rs)
+The tool-call id round-trips into warden's audit ledger so a single
+ledger lookup correlates back to the model's exact call. Anthropic
+emits `toolu_*`, OpenAI emits `call_*` — both pass through verbatim.
+See [`warden-lite/src/proxy.rs`](https://github.com/vanteguardlabs/warden-lite/blob/main/src/proxy.rs)
 for the server side.
 
 ## Develop
@@ -124,7 +154,7 @@ for the server side.
 ```sh
 pnpm install
 pnpm build       # tsup → dist/{index.mjs, index.cjs, index.d.ts}
-pnpm test        # vitest, 32 unit tests
+pnpm test        # vitest, 42 unit tests
 pnpm typecheck   # tsc --noEmit
 pnpm demo        # full e2e against local warden-lite
 ```

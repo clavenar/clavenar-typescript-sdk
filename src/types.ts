@@ -33,6 +33,23 @@ export interface WardenVerdictContext {
 }
 
 /**
+ * Provider-agnostic shape of one tool call ready for inspection.
+ * Anthropic `tool_use` blocks satisfy this directly. OpenAI
+ * `tool_calls` entries reach this shape via `normalizeChatToolCall`
+ * (which JSON-parses the string `arguments` field).
+ *
+ * The `id` round-trips into warden-lite's ledger as the JSON-RPC
+ * envelope id — `toolu_*` for Anthropic, `call_*` for OpenAI. Both
+ * are dense enough to correlate a verdict back to the model's exact
+ * call.
+ */
+export interface NormalizedToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+}
+
+/**
  * Wire shape of warden-lite's `POST /mcp` request body. Mirrors
  * `McpRequest` in `warden-lite/src/proxy.rs`. We send `tools/call` as
  * the method and pack tool name + arguments into `params`.

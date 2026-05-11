@@ -1,6 +1,6 @@
 import { WardenTransportError } from './errors.js';
-import type { AnthropicToolUseBlock } from './anthropic.js';
 import type {
+  NormalizedToolCall,
   WardenDenyResponse,
   WardenInspectRequest,
   WardenOptions,
@@ -10,18 +10,20 @@ import type {
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * Submit one tool_use block to warden-lite for inspection.
+ * Submit one normalized tool call to warden-lite for inspection.
  *
  * Wire contract: `POST {endpoint}/mcp` with a JSON-RPC 2.0 envelope.
  * Server: `warden-lite/src/proxy.rs::handle_mcp`.
  *
- * Returns the verdict; the caller decides whether to throw. We do
- * not collapse 4xx/5xx into a verdict — those throw {@link
- * WardenTransportError} so a misconfigured ingress can't be silently
- * mistaken for an allow.
+ * Provider-agnostic — pass an Anthropic `tool_use` block (already
+ * satisfies the shape) or an OpenAI tool call passed through
+ * `normalizeChatToolCall`. The caller decides whether to throw on
+ * deny; we do not collapse 4xx/5xx into a verdict, those throw
+ * {@link WardenTransportError} so a misconfigured ingress can't be
+ * silently mistaken for an allow.
  */
 export async function inspectToolUse(
-  toolUse: AnthropicToolUseBlock,
+  toolCall: NormalizedToolCall,
   opts: WardenOptions,
 ): Promise<WardenVerdict> {
   const fetchImpl = opts.fetch ?? globalThis.fetch;
@@ -32,8 +34,8 @@ export async function inspectToolUse(
   const body: WardenInspectRequest = {
     jsonrpc: '2.0',
     method: 'tools/call',
-    params: { name: toolUse.name, arguments: toolUse.input },
-    id: toolUse.id,
+    params: { name: toolCall.name, arguments: toolCall.input },
+    id: toolCall.id,
   };
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
