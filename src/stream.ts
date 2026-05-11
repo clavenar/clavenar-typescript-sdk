@@ -32,7 +32,7 @@ import type {
   OpenAIChatCompletionChunk,
   OpenAIChatToolCallDelta,
 } from './openai.js';
-import { inspectToolUse } from './transport.js';
+import { inspectToolUse, pollPendingOnce } from './transport.js';
 import type { NormalizedToolCall, WardenOptions, WardenVerdict } from './types.js';
 
 export async function* wrapAnthropicStream(
@@ -225,6 +225,8 @@ async function processVerdict(
     throw new WardenPending({
       toolName: call.name,
       correlationId: verdict.correlationId,
+      reviewReasons: verdict.reviewReasons,
+      pollOnce: () => pollPendingOnce(verdict.correlationId, opts),
     });
   }
 }

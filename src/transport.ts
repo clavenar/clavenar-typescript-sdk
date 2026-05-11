@@ -4,6 +4,8 @@ import type {
   WardenDenyResponse,
   WardenInspectRequest,
   WardenOptions,
+  WardenPendingResponse,
+  WardenPendingView,
   WardenRetryOptions,
   WardenVerdict,
 } from './types.js';
@@ -115,9 +117,74 @@ async function singleAttempt(
       : { kind: 'deny', payload, correlationId };
   }
 
+  if (response.status === 202) {
+    const payload = await parsePendingBody(response);
+    // The header is the load-bearing source of the correlation id —
+    // it's set on *every* response. The body field is duplicated for
+    // convenience but the header is authoritative.
+    const corr = correlationId ?? payload.correlation_id;
+    if (corr === undefined || corr.length === 0) {
+      throw new WardenTransportError(
+        'warden 202 missing correlation id (header and body both empty)',
+        202,
+      );
+    }
+    return { kind: 'pending', correlationId: corr, reviewReasons: payload.review_reasons };
+  }
+
   const text = await safeReadText(response);
   throw new WardenTransportError(
     `warden inspect: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
+    response.status,
+  );
+}
+
+/**
+ * Single `GET /pending/{correlation_id}` poll. Returns the parsed
+ * {@link WardenPendingView}; the caller's polling loop branches on
+ * `decision`. 404 (pending vanished — operator deleted it, ledger
+ * corruption, etc.) and 401 (auth misconfig) are terminal and surface
+ * as {@link WardenTransportError}; 5xx and network failures are too —
+ * the resolve loop catches and retries those between polls.
+ */
+export async function pollPendingOnce(
+  correlationId: string,
+  opts: Pick<WardenOptions, 'endpoint' | 'token' | 'timeoutMs' | 'fetch'>,
+): Promise<WardenPendingView> {
+  const fetchImpl = opts.fetch ?? globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw new WardenTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
+  }
+  const headers: Record<string, string> = {};
+  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetchImpl(joinUrl(opts.endpoint, `/pending/${encodeURIComponent(correlationId)}`), {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new WardenTransportError(`warden poll timed out after ${timeoutMs}ms`);
+    }
+    throw new WardenTransportError(`warden poll failed: ${reason}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (response.status === 200) {
+    return parsePendingViewBody(response);
+  }
+  const text = await safeReadText(response);
+  throw new WardenTransportError(
+    `warden poll: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
     response.status,
   );
 }
@@ -141,6 +208,67 @@ function backoffMs(baseMs: number, attempt: number): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function parsePendingBody(response: Response): Promise<WardenPendingResponse> {
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new WardenTransportError(`warden 202 with unparseable body: ${reason}`, 202);
+  }
+  if (!isPendingResponse(parsed)) {
+    throw new WardenTransportError(
+      `warden 202 with unexpected body shape: ${JSON.stringify(parsed)}`,
+      202,
+    );
+  }
+  return parsed;
+}
+
+function isPendingResponse(v: unknown): v is WardenPendingResponse {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    r['status'] === 'pending' &&
+    typeof r['correlation_id'] === 'string' &&
+    Array.isArray(r['review_reasons'])
+  );
+}
+
+async function parsePendingViewBody(response: Response): Promise<WardenPendingView> {
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new WardenTransportError(`warden poll with unparseable body: ${reason}`, response.status);
+  }
+  if (!isPendingView(parsed)) {
+    throw new WardenTransportError(
+      `warden poll with unexpected body shape: ${JSON.stringify(parsed)}`,
+      response.status,
+    );
+  }
+  return parsed;
+}
+
+function isPendingView(v: unknown): v is WardenPendingView {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  const decision = r['decision'];
+  return (
+    typeof r['correlation_id'] === 'string' &&
+    typeof r['agent_id'] === 'string' &&
+    typeof r['tool_type'] === 'string' &&
+    typeof r['method'] === 'string' &&
+    Array.isArray(r['review_reasons']) &&
+    typeof r['requested_at'] === 'string' &&
+    (r['decided_at'] === null || typeof r['decided_at'] === 'string') &&
+    (decision === null || decision === 'allow' || decision === 'deny') &&
+    (r['decider_note'] === null || typeof r['decider_note'] === 'string')
+  );
 }
 
 async function parseDenyBody(response: Response): Promise<WardenDenyResponse> {

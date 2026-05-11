@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { inspectToolUse, joinUrl } from '../src/transport.js';
+import { inspectToolUse, joinUrl, pollPendingOnce } from '../src/transport.js';
 import { WardenTransportError } from '../src/errors.js';
 import type { AnthropicToolUseBlock } from '../src/anthropic.js';
 import type { WardenDenyResponse } from '../src/types.js';
@@ -250,6 +250,131 @@ describe('inspectToolUse (correlation id)', () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(200, {}));
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({ kind: 'allow' });
+  });
+});
+
+describe('inspectToolUse (202 pending)', () => {
+  function pendingResponse(headers: Record<string, string> = {}): Response {
+    return new Response(
+      JSON.stringify({
+        status: 'pending',
+        correlation_id: 'corr_pending_42',
+        review_reasons: ['Review: Wire transfers require human approval before execution.'],
+      }),
+      { status: 202, headers: { 'Content-Type': 'application/json', ...headers } },
+    );
+  }
+
+  it('returns pending verdict with reviewReasons + correlationId from header', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(pendingResponse({ 'X-Warden-Correlation-Id': 'corr_pending_42' }));
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict).toEqual({
+      kind: 'pending',
+      correlationId: 'corr_pending_42',
+      reviewReasons: ['Review: Wire transfers require human approval before execution.'],
+    });
+  });
+
+  it('falls back to body correlation_id when header is absent', async () => {
+    const fetch = vi.fn().mockResolvedValue(pendingResponse());
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict.kind).toBe('pending');
+    if (verdict.kind === 'pending') {
+      expect(verdict.correlationId).toBe('corr_pending_42');
+    }
+  });
+
+  it('throws when 202 body is the wrong shape', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ wrong: 'shape' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'WardenTransportError',
+      status: 202,
+    });
+  });
+
+  it('throws when 202 is unparseable', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('not json', { status: 202 }));
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'WardenTransportError',
+      status: 202,
+    });
+  });
+});
+
+describe('pollPendingOnce', () => {
+  function pendingView(decision: 'allow' | 'deny' | null, deciderNote: string | null = null): Response {
+    return new Response(
+      JSON.stringify({
+        correlation_id: 'corr_p',
+        agent_id: 'agent-1',
+        tool_type: 'wire_transfer',
+        method: 'call_tool',
+        review_reasons: ['Review: Wire transfers require human approval before execution.'],
+        requested_at: '2026-05-12T10:00:00Z',
+        decided_at: decision ? '2026-05-12T10:01:00Z' : null,
+        decision,
+        decider_note: deciderNote,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  it('returns the parsed view on 200', async () => {
+    const fetch = vi.fn().mockResolvedValue(pendingView(null));
+    const view = await pollPendingOnce('corr_p', { endpoint: 'http://w', fetch });
+    expect(view.decision).toBeNull();
+    expect(view.tool_type).toBe('wire_transfer');
+  });
+
+  it('parses an allow decision with a decider_note', async () => {
+    const fetch = vi.fn().mockResolvedValue(pendingView('allow', 'ok by sec'));
+    const view = await pollPendingOnce('corr_p', { endpoint: 'http://w', fetch });
+    expect(view.decision).toBe('allow');
+    expect(view.decider_note).toBe('ok by sec');
+  });
+
+  it('targets GET /pending/{correlation_id}', async () => {
+    const fetch = vi.fn().mockResolvedValue(pendingView(null));
+    await pollPendingOnce('corr_p', { endpoint: 'http://w:8088', fetch });
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://w:8088/pending/corr_p');
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('GET');
+  });
+
+  it('forwards the bearer token when configured', async () => {
+    const fetch = vi.fn().mockResolvedValue(pendingView(null));
+    await pollPendingOnce('corr_p', { endpoint: 'http://w', token: 's3cret', fetch });
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer s3cret');
+  });
+
+  it('throws on a 404 with the status surfaced', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('no such pending', { status: 404 }));
+    await expect(pollPendingOnce('corr_p', { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'WardenTransportError',
+      status: 404,
+    });
+  });
+
+  it('throws on a 401 with the status surfaced', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('bad token', { status: 401 }));
+    await expect(pollPendingOnce('corr_p', { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'WardenTransportError',
+      status: 401,
+    });
+  });
+
+  it('url-encodes the correlation id', async () => {
+    const fetch = vi.fn().mockResolvedValue(pendingView(null));
+    await pollPendingOnce('a/b c', { endpoint: 'http://w', fetch });
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://w/pending/a%2Fb%20c');
   });
 });
 

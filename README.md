@@ -126,7 +126,7 @@ block / OpenAI `tool_calls` entry) is sent to warden-lite's
 |---|---|---|
 | `enforce` (default) | allow | response passes through |
 | `enforce` | deny | `throw WardenDenied` |
-| `enforce` | pending | `throw WardenPending` (warden-lite Yellow-tier; roadmap week 4) |
+| `enforce` | pending | `throw WardenPending` — `await e.resolve()` blocks for human approval, then returns void or throws `WardenDenied` |
 | `observe` | any | response passes through, `onVerdict` fires |
 
 `observe` is the rollout knob: warden inspects + records every call,
@@ -185,8 +185,22 @@ end-to-end against a local warden-lite:
   warden-lite emits `X-Warden-Correlation-Id`) for direct ledger
   lookup.
 - `WardenPending` — verdict was `pending` (HIL parked the call).
-  Carries `toolName`, `correlationId`. Not emitted by warden-lite
-  today; full edition only.
+  Carries `toolName`, `correlationId`, and `reviewReasons`. Also
+  exposes `resolve({pollIntervalMs?, timeoutMs?}): Promise<void>` —
+  polls warden-lite until the operator decides. Resolves on `allow`,
+  throws `WardenDenied` on `deny`, throws `WardenTransportError` on
+  timeout (default 10 min). Lift this into a tool-execution loop:
+  ```ts
+  try {
+    const msg = await wrapped.messages.create({...});
+  } catch (e) {
+    if (e instanceof WardenPending) {
+      await e.resolve();                  // blocks until decided
+      return wrapped.messages.create({...}); // retry now that operator approved
+    }
+    throw e;
+  }
+  ```
 - `WardenConfigError` — bad options passed to `wardenWrap`.
 - `WardenTransportError` — warden ingress unreachable or returned an
   unexpected status / body shape. Carries `status` when known.

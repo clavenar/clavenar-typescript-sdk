@@ -92,7 +92,49 @@ export interface WardenDenyResponse {
 export type WardenVerdict =
   | { kind: 'allow'; correlationId?: string }
   | { kind: 'deny'; payload: WardenDenyResponse; correlationId?: string }
-  | { kind: 'pending'; correlationId: string };
+  | { kind: 'pending'; correlationId: string; reviewReasons: string[] };
+
+/**
+ * Wire shape of warden-lite's 202 Accepted body (yellow tier — the
+ * request was parked for human review). Matches the `PendingResponse`
+ * struct in `warden-lite/src/proxy.rs`.
+ */
+export interface WardenPendingResponse {
+  status: 'pending';
+  correlation_id: string;
+  review_reasons: string[];
+}
+
+/**
+ * Wire shape of warden-lite's `GET /pending/{id}` and decide
+ * responses. Mirrors `PendingView` in `warden-lite/src/proxy.rs`.
+ * `decision` is `null` until an operator decides; the SDK's polling
+ * loop watches this field.
+ */
+export interface WardenPendingView {
+  correlation_id: string;
+  agent_id: string;
+  tool_type: string;
+  method: string;
+  review_reasons: string[];
+  requested_at: string;
+  decided_at: string | null;
+  decision: 'allow' | 'deny' | null;
+  decider_note: string | null;
+}
+
+/**
+ * Options for {@link WardenPending.resolve}. Both knobs are bounded:
+ * partners override them per-call if their human-approval cycle is
+ * either much faster (in-product approval button) or much slower
+ * (Slack notification to oncall).
+ */
+export interface WardenResolveOptions {
+  /** Milliseconds between polls. Default 2000. */
+  pollIntervalMs?: number;
+  /** Hard ceiling on the total wait. Default 600_000 (10 minutes). */
+  timeoutMs?: number;
+}
 
 /**
  * Retry policy for transient inspection failures. Network errors and

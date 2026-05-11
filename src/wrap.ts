@@ -16,7 +16,7 @@ import type {
   OpenAIChatToolCall,
 } from './openai.js';
 import { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';
-import { inspectToolUse } from './transport.js';
+import { inspectToolUse, pollPendingOnce } from './transport.js';
 import type { NormalizedToolCall, WardenOptions } from './types.js';
 
 /**
@@ -210,6 +210,8 @@ async function inspectAllToolCalls(
       throw new WardenPending({
         toolName: call.name,
         correlationId: verdict.correlationId,
+        reviewReasons: verdict.reviewReasons,
+        pollOnce: () => pollPendingOnce(verdict.correlationId, opts),
       });
     }
   }

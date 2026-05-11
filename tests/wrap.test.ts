@@ -329,17 +329,28 @@ describe('wardenWrap (parallel inspection)', () => {
 });
 
 describe('wardenWrap (pending verdict throws WardenPending)', () => {
-  // warden-lite doesn't emit pending today (Yellow-tier is full-edition
-  // only; SDK gets it in roadmap week 4). We mock the transport module
-  // to synthesize the pending verdict and prove the wrap converts it
-  // to a WardenPending throw — the contract that week-4 wire support
-  // will plug into.
+  // Yellow-tier wire support landed in warden-lite week-3-Mon; the
+  // SDK side here converts the verdict to a WardenPending throw and
+  // pre-binds the poll callback so `await e.resolve()` works on the
+  // catch-side.
   it('converts pending verdict to WardenPending in enforce mode', async () => {
     vi.resetModules();
     vi.doMock('../src/transport.js', () => ({
       inspectToolUse: async () => ({
         kind: 'pending',
         correlationId: 'corr_e2e_123',
+        reviewReasons: ['Review: Wire transfers require human approval before execution.'],
+      }),
+      pollPendingOnce: async () => ({
+        correlation_id: 'corr_e2e_123',
+        agent_id: 'a',
+        tool_type: 'wire_transfer',
+        method: 'call_tool',
+        review_reasons: ['Review: Wire transfers require human approval before execution.'],
+        requested_at: '2026-05-12T10:00:00Z',
+        decided_at: '2026-05-12T10:01:00Z',
+        decision: 'allow' as const,
+        decider_note: null,
       }),
       joinUrl: (a: string, b: string) => `${a}/${b}`,
     }));
@@ -361,6 +372,11 @@ describe('wardenWrap (pending verdict throws WardenPending)', () => {
       const p = e as InstanceType<typeof PendingMocked>;
       expect(p.toolName).toBe('wire_transfer');
       expect(p.correlationId).toBe('corr_e2e_123');
+      expect(p.reviewReasons).toEqual([
+        'Review: Wire transfers require human approval before execution.',
+      ]);
+      // Pre-bound resolve() against the mocked poll returns void on allow.
+      await expect(p.resolve({ pollIntervalMs: 1, timeoutMs: 100 })).resolves.toBeUndefined();
     }
     vi.doUnmock('../src/transport.js');
     vi.resetModules();
