@@ -1,5 +1,8 @@
 # @warden/ai-sdk
 
+[![CI](https://github.com/vanteguardlabs/warden-ai-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vanteguardlabs/warden-ai-sdk/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@warden/ai-sdk.svg)](https://www.npmjs.com/package/@warden/ai-sdk)
+
 TypeScript SDK for [Agent Warden](https://warden.vanteguardlabs.com).
 Wraps your Anthropic or OpenAI client and inspects every tool call
 the model emits against your policies *before* your tool-execution

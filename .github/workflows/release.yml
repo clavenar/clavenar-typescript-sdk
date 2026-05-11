@@ -1,0 +1,53 @@
+name: release
+
+# Push a tag matching v* (e.g. v0.1.0) to publish. The tag must
+# match package.json's "version" field; the workflow asserts this
+# before running `npm publish` so a typo can't ship a mismatched
+# tarball.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  # OIDC provenance — required for `npm publish --provenance` to mint
+  # a signed Sigstore attestation. The SDK ships with provenance from
+  # 0.1.0 onwards; partners can verify with `npm audit signatures`.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag '$GITHUB_REF_NAME' (version '$TAG') does not match package.json '$PKG'"
+            exit 1
+          fi
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - run: pnpm publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

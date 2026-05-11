@@ -1,6 +1,6 @@
 {
   "name": "@warden/ai-sdk",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Agent Warden before it runs.",
   "license": "Apache-2.0",
   "author": "VanteguardLabs <vanteguardlabs@gmail.com>",
@@ -8,6 +8,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/vanteguardlabs/warden-ai-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/vanteguardlabs/warden-ai-sdk/issues"
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -24,7 +27,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "SECURITY.md"
+    "SECURITY.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup",
@@ -32,22 +36,32 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo": "examples/demo/start.sh"
+    "demo": "examples/demo/start.sh",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "engines": {
     "node": ">=18"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.30.0"
+    "@anthropic-ai/sdk": ">=0.30.0",
+    "openai": ">=4.0.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
       "optional": true
+    },
+    "openai": {
+      "optional": true
     }
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
+    "@anthropic-ai/sdk": "^0.95.0",
     "@types/node": "^20.11.0",
+    "openai": "^6.0.0",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.4.0",
