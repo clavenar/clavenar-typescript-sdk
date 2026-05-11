@@ -12,6 +12,7 @@
  *     --ledger :memory: --upstream http://127.0.0.1:9 \
  *     --token demo-token
  */
+import { spawn } from 'node:child_process';
 import { WardenDenied, WardenPending, wardenWrap } from '../../src/index.js';
 import type { AnthropicMessage } from '../../src/anthropic.js';
 import type { WardenVerdict, WardenVerdictContext } from '../../src/types.js';
@@ -147,17 +148,50 @@ async function runScenario(
   }
 }
 
+// Auto-approve the parked tool call. In production this is a human
+// click in Slack or a dashboard; the demo shells out to the canonical
+// operator command — `warden-lite pending decide` — so viewers see
+// the exact command a partner would run. We could POST to /decide
+// directly (the SDK side wouldn't care), but the CLI is the partner-
+// facing surface and demos should match that.
 async function scheduleAutoApprove(correlationId: string, delayMs: number): Promise<void> {
   await new Promise((r) => setTimeout(r, delayMs));
-  const url = `${endpoint}/pending/${encodeURIComponent(correlationId)}/decide`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision: 'allow', note: 'auto-approved by demo runner' }),
+  const bin = process.env['WARDEN_LITE_BIN'] ?? 'warden-lite';
+  // Pass --endpoint explicitly to the subprocess so the demo works
+  // even when WARDEN_LITE_URL isn't exported in the operator's shell,
+  // but DON'T print it — it equals the default (http://localhost:8088)
+  // and the printed line is for screencap legibility, not literal
+  // reproduction. The truthful version stays in the README.
+  const args = [
+    'pending',
+    'decide',
+    correlationId,
+    '--endpoint',
+    endpoint,
+    '--allow',
+    '--note',
+    'demo auto-approve',
+  ];
+  console.log(
+    `        operator: $ warden-lite pending decide ${correlationId} --allow --note 'demo auto-approve'`,
+  );
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stdout?.on('data', (chunk) => {
+      // Indent the CLI's own output so it nests under the scenario.
+      const line = chunk.toString().trimEnd();
+      if (line.length > 0) console.log(`                  ${line}`);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`warden-lite pending decide exited ${code}: ${stderr}`));
+    });
   });
-  if (!resp.ok) {
-    throw new Error(`decide endpoint returned ${resp.status}: ${await resp.text()}`);
-  }
 }
 
 function printVerdict(v: WardenVerdict, ctx: WardenVerdictContext): void {

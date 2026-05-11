@@ -57,15 +57,21 @@ Expected output (enforce mode, the default):
 
 [3/3] agent: "transfer $100 from acct-A to acct-B"
         tool_use: transfer_funds({"from":"acct-A","to":"acct-B","amount":100})
-        warden:   [PEND]  tool="transfer_funds" corr="…"
+        warden:   [PEND]  tool="transfer_funds" corr="8f1d…"
                   reason: Review: transfer_funds requires human approval before execution.
                   awaiting operator decision …
+        operator: $ warden-lite pending decide 8f1d… --allow --note 'demo auto-approve'
+                  ok: pending 8f1d… decided allow
         result:   approved — agent loop proceeds with the tool call
 ```
 
-The yellow scenario auto-approves via the demo runner. In production
-this would be a Slack approval or a dashboard click — the SDK side is
-identical: `catch (e instanceof WardenPending) { await e.resolve(); }`.
+The yellow scenario auto-approves via the demo runner, which shells out
+to the canonical operator command — `warden-lite pending decide` —
+rather than POSTing to `/pending/{id}/decide` directly. Both work; the
+CLI is what a partner would type. In production the trigger is a Slack
+approval (configure `--slack-webhook-url` on `warden-lite start` for
+one-way alerts) or a dashboard click; the SDK side is unchanged:
+`catch (e instanceof WardenPending) { await e.resolve(); }`.
 
 ### Observe mode
 
@@ -114,9 +120,12 @@ its `pendings` table.
 
 SDK side, the wrap throws `WardenPending` carrying the correlation id
 and a pre-bound poll closure. The demo runner schedules an
-auto-approve fetch to `POST /pending/{id}/decide` after 1.5s; meanwhile
-the partner code does `await pending.resolve()`, which polls
-`GET /pending/{id}` every 250ms until `decision` flips.
+auto-approve `warden-lite pending decide` shell-out after 1.5s;
+meanwhile the partner code does `await pending.resolve()`, which polls
+`GET /pending/{id}` every 250ms until `decision` flips. The shell-out
+is purely a screencap choice — the CLI is just a thin wrapper over the
+same `POST /pending/{id}/decide` endpoint partners can hit directly
+from any HTTP client.
 
 Three transitions:
 

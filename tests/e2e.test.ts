@@ -11,12 +11,18 @@
  *     pnpm test
  */
 import { describe, expect, it } from 'vitest';
-import { inspectToolUse, wardenWrap, WardenDenied } from '../src/index.js';
+import {
+  inspectToolUse,
+  wardenWrap,
+  WardenDenied,
+  WardenPending,
+} from '../src/index.js';
 import type { AnthropicMessage, AnthropicToolUseBlock } from '../src/anthropic.js';
 import type { WardenVerdict } from '../src/types.js';
 
 const endpoint = process.env['WARDEN_E2E_ENDPOINT'];
 const token = process.env['WARDEN_E2E_TOKEN'];
+const decideToken = process.env['WARDEN_E2E_DECIDE_TOKEN'];
 const enabled = typeof endpoint === 'string' && endpoint.length > 0;
 
 const maybeDescribe = enabled ? describe : describe.skip;
@@ -123,5 +129,97 @@ maybeDescribe('e2e against warden-lite', () => {
       name: 'WardenTransportError',
       status: 401,
     });
+  });
+
+  // Operator-side helper. Hits warden-lite's /decide directly rather
+  // than shelling out to the CLI so the test doesn't depend on the
+  // binary being on PATH. The wire contract is what matters here.
+  async function operatorDecide(
+    correlationId: string,
+    decision: 'allow' | 'deny',
+    note: string,
+  ): Promise<void> {
+    const resp = await fetch(
+      `${endpoint}/pending/${encodeURIComponent(correlationId)}/decide`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(decideToken ? { Authorization: `Bearer ${decideToken}` } : {}),
+        },
+        body: JSON.stringify({ decision, note }),
+      },
+    );
+    if (!resp.ok) {
+      throw new Error(`decide returned ${resp.status}: ${await resp.text()}`);
+    }
+  }
+
+  function makeWireTransferMessage(id: string): AnthropicMessage {
+    return {
+      id,
+      type: 'message',
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          id: 'toolu_e2e_wt',
+          name: 'wire_transfer',
+          input: { to: 'acct-1', amount: 100 },
+        },
+      ],
+      stop_reason: 'tool_use',
+    };
+  }
+
+  it('yellow tier: wire_transfer parks; operator approves; resolve returns void', async () => {
+    const stub = {
+      messages: { create: async () => makeWireTransferMessage('msg_e2e_pend_allow') },
+    };
+    const wrapped = wardenWrap(stub, opts);
+
+    let pending: WardenPending | undefined;
+    try {
+      await wrapped.messages.create({});
+    } catch (e) {
+      if (e instanceof WardenPending) pending = e;
+      else throw e;
+    }
+    expect(pending).toBeDefined();
+    expect(pending!.correlationId.length).toBeGreaterThan(0);
+    expect(pending!.reviewReasons.length).toBeGreaterThan(0);
+
+    setTimeout(() => {
+      operatorDecide(pending!.correlationId, 'allow', 'e2e approve').catch(() => {
+        // resolve()'s timeout will surface if this fails.
+      });
+    }, 100);
+    await pending!.resolve({ pollIntervalMs: 50, timeoutMs: 5_000 });
+    // No throw == allow. The point of this test is the round-trip:
+    // a real warden-lite parked the call, /decide updated the row, and
+    // the SDK's poll loop saw the flip.
+  });
+
+  it('yellow tier: wire_transfer parks; operator denies; resolve throws WardenDenied', async () => {
+    const stub = {
+      messages: { create: async () => makeWireTransferMessage('msg_e2e_pend_deny') },
+    };
+    const wrapped = wardenWrap(stub, opts);
+
+    let pending: WardenPending | undefined;
+    try {
+      await wrapped.messages.create({});
+    } catch (e) {
+      if (e instanceof WardenPending) pending = e;
+      else throw e;
+    }
+    expect(pending).toBeDefined();
+
+    setTimeout(() => {
+      operatorDecide(pending!.correlationId, 'deny', 'e2e deny note').catch(() => {});
+    }, 100);
+    await expect(
+      pending!.resolve({ pollIntervalMs: 50, timeoutMs: 5_000 }),
+    ).rejects.toBeInstanceOf(WardenDenied);
   });
 });

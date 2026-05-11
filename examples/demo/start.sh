@@ -82,5 +82,9 @@ echo "warden-lite is up. Running demo..."
 echo "----------------------------------------------------------------"
 
 cd "$ROOT"
+# Export WARDEN_LITE_BIN so run.ts can shell out to it for the
+# operator auto-approve path. Without this, run.ts would have to
+# duplicate the candidate-resolution logic.
+export WARDEN_LITE_BIN
 WARDEN_ENDPOINT="http://localhost:$PORT" WARDEN_TOKEN="$TOKEN" \
     node --import tsx "$HERE/run.ts"
