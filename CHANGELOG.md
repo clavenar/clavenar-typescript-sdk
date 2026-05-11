@@ -8,11 +8,16 @@ shape stabilizes against the first 3 design partners.
 
 ## [0.2.0] - 2026-05-11
 
-Yellow-tier release. Pairs with `warden-lite` 0.2.0+'s async-HIL wire
+Yellow-tier release. Pairs with `warden-lite` 0.3.0+'s async-HIL wire
 contract (`202 Accepted` from `/mcp`, `GET /pending/{id}` poll,
 `POST /pending/{id}/decide`). Adds the `WardenPending.resolve()`
 helper so partners can `try { create() } catch (WardenPending) { await
 e.resolve() }` without writing poll loops or callback servers.
+
+Note: `warden-lite` v0.2.0 does not implement this wire contract —
+202 responses + the pending endpoints landed in v0.3.0. Run
+`ghcr.io/vanteguardlabs/warden-lite:latest` or pin to `:0.3.0` or
+later if you're catching `WardenPending`.
 
 ### Added
 

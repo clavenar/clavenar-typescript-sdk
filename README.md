@@ -13,13 +13,13 @@ loop runs it.
 Three commands from zero to a verdict:
 
 ```bash
-# 1. Boot warden-lite locally. (Container, fly.io, or `cargo install`
-#    — pick what's easy for you. See:
+# 1. Boot warden-lite locally. (Container, fly.io, or the static
+#    binary asset — pick what's easy for you. See:
 #    https://github.com/vanteguardlabs/warden-lite#run-it-in-60-seconds )
 docker run -p 8088:8088 \
   -e WARDEN_LITE_UPSTREAM_URL=https://api.anthropic.com \
   -e WARDEN_LITE_MODE=observe \
-  warden-lite
+  ghcr.io/vanteguardlabs/warden-lite:latest
 
 # 2. Install the SDK in your agent project.
 pnpm add @vanteguardlabs/warden-ai-sdk @anthropic-ai/sdk
