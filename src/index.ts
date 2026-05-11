@@ -20,6 +20,11 @@ export type {
   AnthropicContentBlock,
   AnthropicToolUseBlock,
   AnthropicTextBlock,
+  AnthropicMessageStreamEvent,
+  AnthropicContentBlockStart,
+  AnthropicContentBlockDelta,
+  AnthropicContentBlockStop,
+  AnthropicInputJsonDelta,
 } from './anthropic.js';
 export { isOpenAIChatToolCall, normalizeChatToolCall } from './openai.js';
 export type {
@@ -28,4 +33,8 @@ export type {
   OpenAIChatChoice,
   OpenAIChatMessage,
   OpenAIChatToolCall,
+  OpenAIChatCompletionChunk,
+  OpenAIChatChoiceDelta,
+  OpenAIChatToolCallDelta,
 } from './openai.js';
+export { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';

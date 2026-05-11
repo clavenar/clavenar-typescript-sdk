@@ -89,3 +89,40 @@ export function normalizeChatToolCall(call: OpenAIChatToolCall): NormalizedToolC
   }
   return { id: call.id, name: call.function.name, input };
 }
+
+/**
+ * Streaming chunk shape. The `delta` field carries fragments of an
+ * assembling tool call: `id` + `function.name` arrive in the first
+ * chunk for a given tool index, then `function.arguments` accumulates
+ * as a string across subsequent chunks. `finish_reason` on the
+ * containing choice marks end-of-stream for that choice — typically
+ * `'tool_calls'` when the model wants tools run, `'stop'` for plain
+ * completions.
+ */
+export interface OpenAIChatToolCallDelta {
+  index: number;
+  id?: string;
+  type?: 'function';
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
+
+export interface OpenAIChatChoiceDelta {
+  index: number;
+  delta: {
+    role?: 'assistant';
+    content?: string | null;
+    tool_calls?: OpenAIChatToolCallDelta[];
+  };
+  finish_reason: string | null;
+  [k: string]: unknown;
+}
+
+export interface OpenAIChatCompletionChunk {
+  id: string;
+  object: 'chat.completion.chunk';
+  choices: OpenAIChatChoiceDelta[];
+  [k: string]: unknown;
+}

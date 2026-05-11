@@ -53,3 +53,54 @@ export interface AnthropicLike {
 export function isToolUseBlock(b: AnthropicContentBlock): b is AnthropicToolUseBlock {
   return b.type === 'tool_use';
 }
+
+/**
+ * Anthropic streaming events. We narrow to the subset our stream
+ * wrapper inspects: tool_use openings, JSON input deltas, and
+ * content_block stops. Everything else flows through opaquely as
+ * `{ type: string; [k: string]: unknown }`.
+ *
+ * Source: https://docs.anthropic.com/en/api/messages-streaming
+ */
+export interface AnthropicContentBlockStart {
+  type: 'content_block_start';
+  index: number;
+  content_block: AnthropicContentBlock;
+}
+
+export interface AnthropicInputJsonDelta {
+  type: 'input_json_delta';
+  partial_json: string;
+}
+
+export interface AnthropicContentBlockDelta {
+  type: 'content_block_delta';
+  index: number;
+  delta: AnthropicInputJsonDelta | { type: string; [k: string]: unknown };
+}
+
+export interface AnthropicContentBlockStop {
+  type: 'content_block_stop';
+  index: number;
+}
+
+export type AnthropicMessageStreamEvent =
+  | AnthropicContentBlockStart
+  | AnthropicContentBlockDelta
+  | AnthropicContentBlockStop
+  | { type: string; [k: string]: unknown };
+
+export function isContentBlockStart(e: AnthropicMessageStreamEvent): e is AnthropicContentBlockStart {
+  return e.type === 'content_block_start';
+}
+export function isContentBlockDelta(e: AnthropicMessageStreamEvent): e is AnthropicContentBlockDelta {
+  return e.type === 'content_block_delta';
+}
+export function isContentBlockStop(e: AnthropicMessageStreamEvent): e is AnthropicContentBlockStop {
+  return e.type === 'content_block_stop';
+}
+export function isInputJsonDelta(
+  d: AnthropicContentBlockDelta['delta'],
+): d is AnthropicInputJsonDelta {
+  return d.type === 'input_json_delta';
+}

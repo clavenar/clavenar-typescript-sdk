@@ -3,6 +3,7 @@ import { isToolUseBlock } from './anthropic.js';
 import type {
   AnthropicLike,
   AnthropicMessage,
+  AnthropicMessageStreamEvent,
 } from './anthropic.js';
 import {
   isOpenAIChatToolCall,
@@ -10,9 +11,11 @@ import {
 } from './openai.js';
 import type {
   OpenAIChatCompletion,
+  OpenAIChatCompletionChunk,
   OpenAIChatLike,
   OpenAIChatToolCall,
 } from './openai.js';
+import { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';
 import { inspectToolUse } from './transport.js';
 import type { NormalizedToolCall, WardenOptions } from './types.js';
 
@@ -82,11 +85,14 @@ function wrapAnthropic(client: AnthropicLike, opts: WardenOptions): AnthropicLik
   const messagesProxy = new Proxy(client.messages, {
     get(target, prop, receiver) {
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
-      return async (...args: unknown[]): Promise<AnthropicMessage> => {
+      return async (...args: unknown[]): Promise<AnthropicMessage | AsyncIterable<AnthropicMessageStreamEvent>> => {
         const result = await Reflect.apply(target.create, target, args);
-        const calls = extractAnthropicCalls(result);
+        if (isAsyncIterable(result)) {
+          return wrapAnthropicStream(result as AsyncIterable<AnthropicMessageStreamEvent>, opts);
+        }
+        const calls = extractAnthropicCalls(result as AnthropicMessage);
         await inspectAllToolCalls(calls, opts);
-        return result;
+        return result as AnthropicMessage;
       };
     },
   });
@@ -102,11 +108,14 @@ function wrapOpenAIChat(client: OpenAIChatLike, opts: WardenOptions): OpenAIChat
   const completionsProxy = new Proxy(client.chat.completions, {
     get(target, prop, receiver) {
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
-      return async (...args: unknown[]): Promise<OpenAIChatCompletion> => {
+      return async (...args: unknown[]): Promise<OpenAIChatCompletion | AsyncIterable<OpenAIChatCompletionChunk>> => {
         const result = await Reflect.apply(target.create, target, args);
-        const calls = extractOpenAIChatCalls(result);
+        if (isAsyncIterable(result)) {
+          return wrapOpenAIChatStream(result as AsyncIterable<OpenAIChatCompletionChunk>, opts);
+        }
+        const calls = extractOpenAIChatCalls(result as OpenAIChatCompletion);
         await inspectAllToolCalls(calls, opts);
-        return result;
+        return result as OpenAIChatCompletion;
       };
     },
   });
@@ -122,6 +131,15 @@ function wrapOpenAIChat(client: OpenAIChatLike, opts: WardenOptions): OpenAIChat
       return Reflect.get(target, prop, receiver);
     },
   });
+}
+
+function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    Symbol.asyncIterator in (v as object) &&
+    typeof (v as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function'
+  );
 }
 
 function extractAnthropicCalls(result: AnthropicMessage): NormalizedToolCall[] {

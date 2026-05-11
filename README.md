@@ -53,6 +53,37 @@ const completion = await client.chat.completions.create({
 // the Anthropic path.
 ```
 
+### Streaming
+
+Both providers' streaming surfaces are wrapped transparently. The
+SDK detects an async-iterable return from `create()` and inspects
+each tool call as it assembles from deltas. The closing event
+(Anthropic `content_block_stop`, OpenAI `finish_reason: 'tool_calls'`)
+is held until warden returns a verdict — denied calls throw
+mid-iteration *before* the partner sees the event that would let
+their loop execute the tool.
+
+```ts
+const stream = await client.messages.create({
+  model: 'claude-opus-4-7', max_tokens: 1024, stream: true,
+  tools: [...], messages: [...],
+});
+try {
+  for await (const event of stream) {
+    /* process event */
+  }
+} catch (e) {
+  if (e instanceof WardenDenied) {
+    // partner never saw content_block_stop for the denied tool_use
+  } else throw e;
+}
+```
+
+Same shape with OpenAI's `chat.completions.create({ stream: true })`.
+For Anthropic's `messages.stream()` helper, use
+`messages.create({ stream: true })` instead until that helper's
+wrap lands in a follow-up.
+
 ## What it does
 
 `wardenWrap` is a transparent `Proxy` around your model client.
@@ -154,7 +185,7 @@ for the server side.
 ```sh
 pnpm install
 pnpm build       # tsup → dist/{index.mjs, index.cjs, index.d.ts}
-pnpm test        # vitest, 42 unit tests
+pnpm test        # vitest, 54 unit tests
 pnpm typecheck   # tsc --noEmit
 pnpm demo        # full e2e against local warden-lite
 ```
