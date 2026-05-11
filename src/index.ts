@@ -13,6 +13,7 @@ export type {
   WardenVerdict,
   WardenVerdictContext,
   NormalizedToolCall,
+  WardenRetryOptions,
 } from './types.js';
 export type {
   AnthropicLike,

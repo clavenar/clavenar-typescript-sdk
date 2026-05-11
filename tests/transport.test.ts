@@ -121,6 +121,138 @@ describe('inspectToolUse', () => {
   });
 });
 
+describe('inspectToolUse (retry on transient errors)', () => {
+  it('retries a 502 once and returns the eventual 200', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(fakeResponse(502, 'bad gateway'))
+      .mockResolvedValueOnce(fakeResponse(200, { ok: true }));
+    const verdict = await inspectToolUse(toolUse, {
+      endpoint: 'http://w',
+      fetch,
+      retry: { maxAttempts: 3, baseDelayMs: 1 },
+    });
+    expect(verdict.kind).toBe('allow');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries network-layer fetch rejections', async () => {
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(fakeResponse(200));
+    const verdict = await inspectToolUse(toolUse, {
+      endpoint: 'http://w',
+      fetch,
+      retry: { maxAttempts: 3, baseDelayMs: 1 },
+    });
+    expect(verdict.kind).toBe('allow');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('exhausts after maxAttempts on persistent 503 and throws the last error', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(503, 'unavailable'));
+    await expect(
+      inspectToolUse(toolUse, {
+        endpoint: 'http://w',
+        fetch,
+        retry: { maxAttempts: 3, baseDelayMs: 1 },
+      }),
+    ).rejects.toMatchObject({ name: 'WardenTransportError', status: 503 });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('does NOT retry 401 — config errors are not transient', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(401, 'bad bearer'));
+    await expect(
+      inspectToolUse(toolUse, {
+        endpoint: 'http://w',
+        fetch,
+        retry: { maxAttempts: 5, baseDelayMs: 1 },
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry 403 — that is a verdict, not a failure', async () => {
+    const denyBody = {
+      error: 'security_violation',
+      reasons: ['policy: x'],
+      review_reasons: [],
+      intent_category: 'PolicyDeny',
+    };
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(403, denyBody));
+    const verdict = await inspectToolUse(toolUse, {
+      endpoint: 'http://w',
+      fetch,
+      retry: { maxAttempts: 5, baseDelayMs: 1 },
+    });
+    expect(verdict.kind).toBe('deny');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects retry.maxAttempts=1 (disable retries)', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(502));
+    await expect(
+      inspectToolUse(toolUse, {
+        endpoint: 'http://w',
+        fetch,
+        retry: { maxAttempts: 1, baseDelayMs: 1 },
+      }),
+    ).rejects.toBeInstanceOf(WardenTransportError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('inspectToolUse (correlation id)', () => {
+  function fakeResponseWithHeaders(
+    status: number,
+    body: unknown,
+    headers: Record<string, string>,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    });
+  }
+
+  it('surfaces X-Warden-Correlation-Id on an allow verdict', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        fakeResponseWithHeaders(200, { ok: true }, { 'X-Warden-Correlation-Id': 'corr_a' }),
+      );
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict).toEqual({ kind: 'allow', correlationId: 'corr_a' });
+  });
+
+  it('surfaces X-Warden-Correlation-Id on a deny verdict', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      fakeResponseWithHeaders(
+        403,
+        {
+          error: 'security_violation',
+          reasons: ['policy: drop_table blocked'],
+          review_reasons: [],
+          intent_category: 'PolicyDeny',
+        },
+        { 'X-Warden-Correlation-Id': 'corr_b' },
+      ),
+    );
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict.kind).toBe('deny');
+    if (verdict.kind === 'deny') {
+      expect(verdict.correlationId).toBe('corr_b');
+    }
+  });
+
+  it('omits correlationId when header absent', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200, {}));
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict).toEqual({ kind: 'allow' });
+  });
+});
+
 describe('joinUrl', () => {
   it('joins clean base + path', () => {
     expect(joinUrl('http://x', '/mcp')).toBe('http://x/mcp');

@@ -166,19 +166,29 @@ function extractOpenAIChatCalls(result: OpenAIChatCompletion): NormalizedToolCal
 }
 
 /**
- * Inspect every normalized tool call in order, fire the verdict
- * callback, and (in enforce mode) throw on the first deny/pending.
- * Inspection stops at the first throw — once one call is denied, the
- * upstream response is dead and subsequent inspections would just add
- * noise to the ledger.
+ * Inspect every normalized tool call concurrently, fire the verdict
+ * callback in submission order, and (in enforce mode) throw on the
+ * first deny/pending.
+ *
+ * Calls are kicked off in parallel via `Promise.all` so a turn with
+ * three tool_uses doesn't serialize three warden round-trips. The
+ * `for` loop that consumes the results still preserves submission
+ * order — the first deny in `calls[]` is the one that throws, not
+ * the first deny to come back over the wire. A single transient
+ * transport error rejects the whole batch (Promise.all semantics);
+ * the surviving verdicts go to the ledger but don't surface to the
+ * caller, which is fine because we're aborting the turn anyway.
  */
 async function inspectAllToolCalls(
   calls: NormalizedToolCall[],
   opts: WardenOptions,
 ): Promise<void> {
   const enforce = (opts.mode ?? 'enforce') === 'enforce';
-  for (const call of calls) {
-    const verdict = await inspectToolUse(call, opts);
+  if (calls.length === 0) return;
+  const verdicts = await Promise.all(calls.map((c) => inspectToolUse(c, opts)));
+  for (let i = 0; i < calls.length; i++) {
+    const call = calls[i]!;
+    const verdict = verdicts[i]!;
     if (opts.onVerdict) {
       await opts.onVerdict(verdict, {
         toolName: call.name,
@@ -193,6 +203,7 @@ async function inspectAllToolCalls(
         reasons: verdict.payload.reasons,
         reviewReasons: verdict.payload.review_reasons,
         intentCategory: verdict.payload.intent_category,
+        ...(verdict.correlationId !== undefined && { correlationId: verdict.correlationId }),
       });
     }
     if (verdict.kind === 'pending') {

@@ -192,7 +192,7 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
     }
   });
 
-  it('stops inspecting after the first deny', async () => {
+  it('inspects all tool_use blocks in parallel; first deny in order throws', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_a', name: 'drop_table', input: {} },
       { type: 'tool_use', id: 'toolu_b', name: 'fetch_user', input: {} },
@@ -205,8 +205,18 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
-    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(WardenDenied);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    try {
+      await wrapped.messages.create({});
+      expect.fail('expected WardenDenied');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WardenDenied);
+      // First deny in submission order — drop_table, not the
+      // second block — is the one that throws.
+      expect((e as WardenDenied).toolName).toBe('drop_table');
+    }
+    // Both inspections fire concurrently — partner pays one warden
+    // round-trip of latency, not two.
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('fires onVerdict for the denied block BEFORE throwing', async () => {
@@ -242,6 +252,80 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
     await expect(wrapped.messages.create({})).resolves.toBe(message);
   });
 
+});
+
+describe('wardenWrap (parallel inspection)', () => {
+  it('kicks off every tool_use inspection before any resolves', async () => {
+    const message = makeMessage([
+      { type: 'tool_use', id: 'toolu_a', name: 'fetch_user', input: { id: 1 } },
+      { type: 'tool_use', id: 'toolu_b', name: 'fetch_org', input: { id: 2 } },
+      { type: 'tool_use', id: 'toolu_c', name: 'fetch_log', input: { id: 3 } },
+    ]);
+    // Deferred resolvers so we can prove all three fetches were
+    // kicked off before any returned — i.e. they're concurrent, not
+    // serial. If wrap were still serial, fetch would only be called
+    // once until we resolve the first deferred.
+    const deferreds: Array<{ resolve: (r: Response) => void; promise: Promise<Response> }> = [];
+    for (let i = 0; i < 3; i++) {
+      let resolve!: (r: Response) => void;
+      const promise = new Promise<Response>((r) => {
+        resolve = r;
+      });
+      deferreds.push({ resolve, promise });
+    }
+    const fetch = vi
+      .fn()
+      .mockReturnValueOnce(deferreds[0]!.promise)
+      .mockReturnValueOnce(deferreds[1]!.promise)
+      .mockReturnValueOnce(deferreds[2]!.promise);
+    const wrapped = wardenWrap(
+      { messages: { create: async () => message } },
+      { endpoint: 'http://w', fetch },
+    );
+    const callPromise = wrapped.messages.create({});
+    // Let the wrap's Promise.all kick off all inspections.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    // Now release in any order; the call should resolve.
+    deferreds[2]!.resolve(allowResponse());
+    deferreds[0]!.resolve(allowResponse());
+    deferreds[1]!.resolve(allowResponse());
+    await callPromise;
+  });
+
+  it('surfaces correlationId from response header onto WardenDenied', async () => {
+    const message = makeMessage([
+      { type: 'tool_use', id: 'toolu_x', name: 'drop_table', input: {} },
+    ]);
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'security_violation',
+          reasons: ['policy: drop_table blocked'],
+          review_reasons: [],
+          intent_category: 'PolicyDeny',
+        }),
+        {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Warden-Correlation-Id': 'corr_xyz_123',
+          },
+        },
+      ),
+    );
+    const wrapped = wardenWrap(
+      { messages: { create: async () => message } },
+      { endpoint: 'http://w', fetch },
+    );
+    try {
+      await wrapped.messages.create({});
+      expect.fail('expected WardenDenied');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WardenDenied);
+      expect((e as WardenDenied).correlationId).toBe('corr_xyz_123');
+    }
+  });
 });
 
 describe('wardenWrap (pending verdict throws WardenPending)', () => {

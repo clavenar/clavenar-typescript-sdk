@@ -23,6 +23,11 @@ export interface WardenOptions {
    * semantics. Errors thrown here are propagated to the caller.
    */
   onVerdict?: (verdict: WardenVerdict, ctx: WardenVerdictContext) => void | Promise<void>;
+  /**
+   * Retry policy applied per inspection. Defaults to 3 attempts
+   * with 100ms base delay. Set `maxAttempts: 1` to disable retries.
+   */
+  retry?: WardenRetryOptions;
 }
 
 /** Context passed to {@link WardenOptions.onVerdict}. */
@@ -79,8 +84,23 @@ export interface WardenDenyResponse {
 /**
  * Result of inspecting one tool call. Internal — callers receive a
  * thrown error on deny instead of a tagged union.
+ *
+ * `correlationId` (when present) is the value warden-lite sets on
+ * the `X-Warden-Correlation-Id` response header — opaque to the SDK,
+ * load-bearing for ledger lookups partner-side.
  */
 export type WardenVerdict =
-  | { kind: 'allow' }
-  | { kind: 'deny'; payload: WardenDenyResponse }
+  | { kind: 'allow'; correlationId?: string }
+  | { kind: 'deny'; payload: WardenDenyResponse; correlationId?: string }
   | { kind: 'pending'; correlationId: string };
+
+/**
+ * Retry policy for transient inspection failures. Network errors and
+ * 5xx responses retry up to `maxAttempts` times with exponential
+ * backoff (`baseDelayMs * 2^attempt`, jittered). 4xx (other than
+ * 403, which is a verdict) and 200 never retry.
+ */
+export interface WardenRetryOptions {
+  maxAttempts: number;
+  baseDelayMs: number;
+}

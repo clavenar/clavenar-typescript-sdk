@@ -131,7 +131,7 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
     }
   });
 
-  it('stops inspecting after the first deny', async () => {
+  it('inspects all tool_calls in parallel; first deny in order throws', async () => {
     const completion = makeCompletion([
       toolCall('call_a', 'drop_table', {}),
       toolCall('call_b', 'fetch_user', {}),
@@ -144,8 +144,14 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch },
     );
-    await expect(wrapped.chat.completions.create({})).rejects.toBeInstanceOf(WardenDenied);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    try {
+      await wrapped.chat.completions.create({});
+      expect.fail('expected WardenDenied');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WardenDenied);
+      expect((e as WardenDenied).toolName).toBe('drop_table');
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('rejects an unparseable arguments string with WardenConfigError', async () => {

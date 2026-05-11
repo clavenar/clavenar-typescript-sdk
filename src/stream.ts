@@ -105,11 +105,10 @@ export async function* wrapOpenAIChatStream(
 
     // Inspect BEFORE yielding the finishing chunk — partner doesn't
     // see finish_reason='tool_calls' for a choice that has a denied
-    // call until warden clears it.
+    // call until warden clears it. Parallel across all tool calls in
+    // the choice; serial across choices (an unusual N>1 case).
     for (const choiceIdx of choicesToInspect) {
-      for (const call of drainChoice(bufs, choiceIdx)) {
-        await inspectAndMaybeThrow(call, opts, enforce);
-      }
+      await inspectChoiceBatch(drainChoice(bufs, choiceIdx), opts, enforce);
     }
 
     yield chunk;
@@ -179,6 +178,32 @@ async function inspectAndMaybeThrow(
   enforce: boolean,
 ): Promise<void> {
   const verdict: WardenVerdict = await inspectToolUse(call, opts);
+  await processVerdict(verdict, call, opts, enforce);
+}
+
+/**
+ * OpenAI choice-end batch: every tool call in one choice inspected
+ * concurrently, verdicts processed in submission order. First deny
+ * still throws first — same semantics as the non-streaming path.
+ */
+async function inspectChoiceBatch(
+  calls: NormalizedToolCall[],
+  opts: WardenOptions,
+  enforce: boolean,
+): Promise<void> {
+  if (calls.length === 0) return;
+  const verdicts = await Promise.all(calls.map((c) => inspectToolUse(c, opts)));
+  for (let i = 0; i < calls.length; i++) {
+    await processVerdict(verdicts[i]!, calls[i]!, opts, enforce);
+  }
+}
+
+async function processVerdict(
+  verdict: WardenVerdict,
+  call: NormalizedToolCall,
+  opts: WardenOptions,
+  enforce: boolean,
+): Promise<void> {
   if (opts.onVerdict) {
     await opts.onVerdict(verdict, {
       toolName: call.name,
@@ -193,6 +218,7 @@ async function inspectAndMaybeThrow(
       reasons: verdict.payload.reasons,
       reviewReasons: verdict.payload.review_reasons,
       intentCategory: verdict.payload.intent_category,
+      ...(verdict.correlationId !== undefined && { correlationId: verdict.correlationId }),
     });
   }
   if (verdict.kind === 'pending') {

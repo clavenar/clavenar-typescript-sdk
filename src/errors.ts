@@ -9,18 +9,27 @@ export class WardenDenied extends Error {
   readonly reviewReasons: string[];
   readonly intentCategory: string;
   readonly toolName: string;
+  /**
+   * Warden's correlation id for this inspection, when warden-lite
+   * sets `X-Warden-Correlation-Id`. Use this to look the call up in
+   * the audit ledger. Undefined when the deployment doesn't emit the
+   * header (older builds, partner-deployed gateways).
+   */
+  readonly correlationId: string | undefined;
 
   constructor(args: {
     toolName: string;
     reasons: string[];
     reviewReasons: string[];
     intentCategory: string;
+    correlationId?: string;
   }) {
     super(`warden denied tool "${args.toolName}": ${args.reasons.join(' | ')}`);
     this.toolName = args.toolName;
     this.reasons = args.reasons;
     this.reviewReasons = args.reviewReasons;
     this.intentCategory = args.intentCategory;
+    this.correlationId = args.correlationId;
   }
 }
 

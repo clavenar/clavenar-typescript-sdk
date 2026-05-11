@@ -149,11 +149,14 @@ end-to-end against a local warden-lite:
 | `timeoutMs` | `number` | `10_000` | per-inspection HTTP timeout |
 | `onVerdict` | `(v, ctx) => void \| Promise<void>` | `undefined` | fires per inspected `tool_use` (before any throw) |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | override for testing |
+| `retry` | `{ maxAttempts, baseDelayMs }` | `{ 3, 100 }` | network errors + 5xx retry with jittered exponential backoff. `maxAttempts: 1` disables. |
 
 ### Exceptions
 
 - `WardenDenied` — verdict was `deny`. Carries `toolName`, `reasons`,
-  `reviewReasons`, `intentCategory`.
+  `reviewReasons`, `intentCategory`, and `correlationId` (when
+  warden-lite emits `X-Warden-Correlation-Id`) for direct ledger
+  lookup.
 - `WardenPending` — verdict was `pending` (HIL parked the call).
   Carries `toolName`, `correlationId`. Not emitted by warden-lite
   today; full edition only.
@@ -185,7 +188,7 @@ for the server side.
 ```sh
 pnpm install
 pnpm build       # tsup → dist/{index.mjs, index.cjs, index.d.ts}
-pnpm test        # vitest, 54 unit tests
+pnpm test        # vitest, 65 unit tests
 pnpm typecheck   # tsc --noEmit
 pnpm demo        # full e2e against local warden-lite
 ```
