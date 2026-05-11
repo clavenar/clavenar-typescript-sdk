@@ -1,4 +1,5 @@
 export { wardenWrap } from './wrap.js';
+export { inspectToolUse } from './transport.js';
 export {
   WardenDenied,
   WardenPending,
