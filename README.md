@@ -8,6 +8,29 @@ Wraps your Anthropic or OpenAI client and inspects every tool call
 the model emits against your policies *before* your tool-execution
 loop runs it.
 
+## Quickstart
+
+Three commands from zero to a verdict:
+
+```bash
+# 1. Boot warden-lite locally. (Container, fly.io, or `cargo install`
+#    — pick what's easy for you. See:
+#    https://github.com/vanteguardlabs/warden-lite#run-it-in-60-seconds )
+docker run -p 8088:8088 \
+  -e WARDEN_LITE_UPSTREAM_URL=https://api.anthropic.com \
+  -e WARDEN_LITE_MODE=observe \
+  warden-lite
+
+# 2. Install the SDK in your agent project.
+pnpm add @vanteguardlabs/warden-ai-sdk @anthropic-ai/sdk
+
+# 3. Wrap your client. The snippet below catches a deny verdict;
+#    in observe mode every call passes through and you read the
+#    verdict off the `onVerdict` callback instead.
+```
+
+Then the snippet that catches a deny:
+
 ```ts
 import Anthropic from '@anthropic-ai/sdk';
 import { wardenWrap, WardenDenied } from '@vanteguardlabs/warden-ai-sdk';
@@ -120,10 +143,11 @@ pnpm add @vanteguardlabs/warden-ai-sdk openai                # OpenAI
 `@anthropic-ai/sdk` and `openai` are peer dependencies — install
 whichever ones you use. The SDK has no hard import on either.
 
-Run a warden-lite instance somewhere reachable. The
-[`warden-lite`](https://github.com/vanteguardlabs/warden-lite) binary
-is a single Rust binary, self-hosted in your infra. 60-second
-deploy via Fly.io / Railway / Render button (roadmap week 3).
+Run a warden-lite instance somewhere reachable.
+[`warden-lite`](https://github.com/vanteguardlabs/warden-lite) is a
+single Rust binary, self-hosted in your infra — container, Fly.io
+button, or `cargo install`. See its [Run it in 60 seconds](https://github.com/vanteguardlabs/warden-lite#run-it-in-60-seconds)
+section.
 
 ## Demo
 
