@@ -1,5 +1,5 @@
 {
-  "name": "@warden/ai-sdk",
+  "name": "@vanteguardlabs/warden-ai-sdk",
   "version": "0.1.0",
   "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Agent Warden before it runs.",
   "license": "Apache-2.0",

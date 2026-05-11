@@ -1,6 +1,6 @@
 # Week-1 demo
 
-End-to-end demonstration of the `@warden/ai-sdk` wrap pattern. Runs a
+End-to-end demonstration of the `@vanteguardlabs/warden-ai-sdk` wrap pattern. Runs a
 mocked Anthropic client through `wardenWrap` and shows two outcomes:
 
 - `fetch_user` is allowed by policy → message passes through.

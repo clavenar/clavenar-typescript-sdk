@@ -1,7 +1,7 @@
-# @warden/ai-sdk
+# @vanteguardlabs/warden-ai-sdk
 
 [![CI](https://github.com/vanteguardlabs/warden-ai-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vanteguardlabs/warden-ai-sdk/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@warden/ai-sdk.svg)](https://www.npmjs.com/package/@warden/ai-sdk)
+[![npm](https://img.shields.io/npm/v/@vanteguardlabs/warden-ai-sdk.svg)](https://www.npmjs.com/package/@vanteguardlabs/warden-ai-sdk)
 
 TypeScript SDK for [Agent Warden](https://warden.vanteguardlabs.com).
 Wraps your Anthropic or OpenAI client and inspects every tool call
@@ -10,7 +10,7 @@ loop runs it.
 
 ```ts
 import Anthropic from '@anthropic-ai/sdk';
-import { wardenWrap, WardenDenied } from '@warden/ai-sdk';
+import { wardenWrap, WardenDenied } from '@vanteguardlabs/warden-ai-sdk';
 
 const client = wardenWrap(new Anthropic(), {
   endpoint: 'http://localhost:8088',         // warden-lite ingress
@@ -40,7 +40,7 @@ Same wrap, same options — the SDK auto-detects the client shape:
 
 ```ts
 import OpenAI from 'openai';
-import { wardenWrap, WardenDenied } from '@warden/ai-sdk';
+import { wardenWrap, WardenDenied } from '@vanteguardlabs/warden-ai-sdk';
 
 const client = wardenWrap(new OpenAI(), {
   endpoint: 'http://localhost:8088',
@@ -113,8 +113,8 @@ verdicts.
 ## Install
 
 ```sh
-pnpm add @warden/ai-sdk @anthropic-ai/sdk     # Anthropic
-pnpm add @warden/ai-sdk openai                # OpenAI
+pnpm add @vanteguardlabs/warden-ai-sdk @anthropic-ai/sdk     # Anthropic
+pnpm add @vanteguardlabs/warden-ai-sdk openai                # OpenAI
 ```
 
 `@anthropic-ai/sdk` and `openai` are peer dependencies — install

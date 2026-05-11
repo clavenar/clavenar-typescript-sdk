@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@warden/ai-sdk` are documented here. Format
+All notable changes to `@vanteguardlabs/warden-ai-sdk` are documented here. Format
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 0.x means the public API is still settling — we'll cut 1.0 when the
