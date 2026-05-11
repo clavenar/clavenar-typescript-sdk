@@ -16,6 +16,20 @@ export interface WardenOptions {
   timeoutMs?: number;
   /** Override the global fetch (testing). */
   fetch?: typeof fetch;
+  /**
+   * Called once per inspected tool_use with the verdict warden
+   * returned. Fires before any deny→throw translation, so callers
+   * can record observe-mode telemetry without changing the throw
+   * semantics. Errors thrown here are propagated to the caller.
+   */
+  onVerdict?: (verdict: WardenVerdict, ctx: WardenVerdictContext) => void | Promise<void>;
+}
+
+/** Context passed to {@link WardenOptions.onVerdict}. */
+export interface WardenVerdictContext {
+  toolName: string;
+  toolUseId: string;
+  toolInput: unknown;
 }
 
 /**

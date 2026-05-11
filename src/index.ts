@@ -11,6 +11,7 @@ export type {
   WardenInspectRequest,
   WardenDenyResponse,
   WardenVerdict,
+  WardenVerdictContext,
 } from './types.js';
 export type {
   AnthropicLike,
