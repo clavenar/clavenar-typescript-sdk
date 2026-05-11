@@ -18,6 +18,13 @@ import type { WardenVerdict, WardenVerdictContext } from '../../src/types.js';
 
 const endpoint = process.env['WARDEN_ENDPOINT'] ?? 'http://localhost:8088';
 const token = process.env['WARDEN_TOKEN'] ?? 'demo-token';
+// OBSERVE=1 flips the SDK to observe mode: deny verdicts surface via
+// the onVerdict callback but never throw. Useful for showing the
+// rollout pattern partners follow before flipping to enforce.
+const mode: 'enforce' | 'observe' =
+  process.env['OBSERVE'] === '1' || process.env['OBSERVE'] === 'true'
+    ? 'observe'
+    : 'enforce';
 
 const scenarios: Array<{ label: string; message: AnthropicMessage }> = [
   {
@@ -65,13 +72,20 @@ async function runScenario(
     {
       endpoint,
       token,
+      mode,
       onVerdict: (v: WardenVerdict, ctx: WardenVerdictContext) => printVerdict(v, ctx),
     },
   );
 
   try {
     await wrapped.messages.create({});
-    console.log('        result:   message returned, your tool-execution loop runs the tool');
+    if (mode === 'observe') {
+      console.log(
+        '        result:   message returned (observe: warden recorded the verdict, partner code keeps running)',
+      );
+    } else {
+      console.log('        result:   message returned, your tool-execution loop runs the tool');
+    }
   } catch (e) {
     if (e instanceof WardenDenied) {
       console.log(`        result:   WardenDenied thrown — your existing throw-handler kicks in`);
@@ -101,14 +115,20 @@ function printVerdict(v: WardenVerdict, ctx: WardenVerdictContext): void {
 }
 
 function banner(): void {
-  console.log('Agent Warden SDK — week-1 demo');
+  console.log('Agent Warden SDK — demo');
   console.log(`  endpoint: ${endpoint}`);
   console.log(`  token:    ${token ? '*****' + token.slice(-4) : '(none)'}`);
+  console.log(`  mode:     ${mode}`);
   console.log(`  client:   mocked Anthropic (canned tool_use blocks)`);
   console.log('');
-  console.log('Each scenario calls wrapped.messages.create(). Warden inspects every');
-  console.log("tool_use block in the response; default mode is 'enforce' so a deny");
-  console.log('throws WardenDenied to the caller.');
+  if (mode === 'enforce') {
+    console.log('enforce mode: a deny verdict throws WardenDenied to the caller; the');
+    console.log("partner's tool-execution loop never sees the denied tool.");
+  } else {
+    console.log('observe mode: warden records every verdict via onVerdict but never');
+    console.log('throws. Use this during rollout, flip to enforce when the verdicts');
+    console.log('are trustworthy. Re-run with `OBSERVE= pnpm demo` to see enforce mode.');
+  }
 }
 
 function makeMessage(id: string, content: AnthropicMessage['content']): AnthropicMessage {

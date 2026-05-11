@@ -33,7 +33,7 @@ pnpm install
 pnpm demo
 ```
 
-Expected output:
+Expected output (enforce mode, the default):
 
 ```
 [1/2] agent: "fetch user 42"
@@ -49,6 +49,20 @@ Expected output:
                   intentCategory=Routine
                   reason: Violation: delete_user is a destructive operation …
 ```
+
+### Observe mode
+
+Set `OBSERVE=1` to show the rollout flow — every verdict surfaces
+via the `onVerdict` callback, no throw:
+
+```sh
+OBSERVE=1 pnpm demo
+```
+
+Same two scenarios, but `delete_user` no longer throws — the
+denied call lands as a `[DENY]` verdict in the callback and the
+demo continues. Partners deploy in this mode first, count
+would-have-denies, then flip to enforce when the verdicts settle.
 
 ## Recording the screencap
 
