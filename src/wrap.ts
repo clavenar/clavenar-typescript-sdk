@@ -1,4 +1,4 @@
-import { WardenConfigError } from './errors.js';
+import { WardenConfigError, WardenDenied, WardenPending } from './errors.js';
 import { isToolUseBlock } from './anthropic.js';
 import type { AnthropicLike, AnthropicMessage, AnthropicToolUseBlock } from './anthropic.js';
 import { inspectToolUse } from './transport.js';
@@ -13,10 +13,19 @@ import type { WardenOptions } from './types.js';
  * Everything else (`models.list`, `client.beta.*`, etc.) routes
  * through `Reflect` unchanged so this stays a drop-in wrapper.
  *
- * Week 1 Wednesday semantics: inspect every tool_use and surface the
- * verdict via {@link WardenOptions.onVerdict}, but do NOT throw on
- * deny — the response passes through unchanged. Thursday adds the
- * `WardenDenied` throw on the first deny verdict.
+ * Behavior is governed by `opts.mode`:
+ *
+ * - `'enforce'` (default): the first denied `tool_use` aborts the
+ *   call with {@link WardenDenied}; a pending verdict aborts with
+ *   {@link WardenPending}. The Anthropic response is discarded. The
+ *   `onVerdict` callback fires for that block before the throw, so
+ *   observe-mode telemetry stays consistent across both modes.
+ *
+ * - `'observe'`: no throw. Every verdict is surfaced via
+ *   `onVerdict`, the response passes through, and the partner's
+ *   existing tool-execution loop runs the denied tool. Use this for
+ *   rollouts where you need warden visibility without breaking the
+ *   agent.
  */
 export function wardenWrap<T extends AnthropicLike>(client: T, opts: WardenOptions): T {
   validateOptions(opts);
@@ -52,15 +61,17 @@ async function wrappedCreate(
 }
 
 /**
- * Walk every `tool_use` block in the response, inspect it, and fire
- * the verdict callback. Inspection is sequential — warden-lite
- * preserves the audit-ledger ordering, and one denied block before
- * another allowed block in the same message is meaningful context.
+ * Walk every `tool_use` block in the response, inspect it, fire the
+ * verdict callback, and (in enforce mode) throw on the first
+ * deny/pending. Inspection stops at the first throw — once one
+ * block is denied, the call is dead and subsequent inspections
+ * would just add noise to the ledger.
  */
 async function inspectAllToolUses(
   result: AnthropicMessage,
   opts: WardenOptions,
 ): Promise<void> {
+  const enforce = (opts.mode ?? 'enforce') === 'enforce';
   const blocks: AnthropicToolUseBlock[] = (result.content ?? []).filter(isToolUseBlock);
   for (const block of blocks) {
     const verdict = await inspectToolUse(block, opts);
@@ -71,7 +82,21 @@ async function inspectAllToolUses(
         toolInput: block.input,
       });
     }
-    // Thursday: throw WardenDenied here on verdict.kind === 'deny'.
+    if (!enforce) continue;
+    if (verdict.kind === 'deny') {
+      throw new WardenDenied({
+        toolName: block.name,
+        reasons: verdict.payload.reasons,
+        reviewReasons: verdict.payload.review_reasons,
+        intentCategory: verdict.payload.intent_category,
+      });
+    }
+    if (verdict.kind === 'pending') {
+      throw new WardenPending({
+        toolName: block.name,
+        correlationId: verdict.correlationId,
+      });
+    }
   }
 }
 
@@ -86,5 +111,8 @@ function validateOptions(opts: WardenOptions): void {
   }
   if (opts.timeoutMs !== undefined && (opts.timeoutMs <= 0 || !Number.isFinite(opts.timeoutMs))) {
     throw new WardenConfigError('wardenWrap: opts.timeoutMs must be a positive finite number');
+  }
+  if (opts.mode !== undefined && opts.mode !== 'enforce' && opts.mode !== 'observe') {
+    throw new WardenConfigError(`wardenWrap: opts.mode must be 'enforce' or 'observe' (got '${opts.mode}')`);
   }
 }

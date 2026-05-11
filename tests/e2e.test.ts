@@ -11,7 +11,7 @@
  *     pnpm test
  */
 import { describe, expect, it } from 'vitest';
-import { inspectToolUse, wardenWrap } from '../src/index.js';
+import { inspectToolUse, wardenWrap, WardenDenied } from '../src/index.js';
 import type { AnthropicMessage, AnthropicToolUseBlock } from '../src/anthropic.js';
 import type { WardenVerdict } from '../src/types.js';
 
@@ -51,7 +51,7 @@ maybeDescribe('e2e against warden-lite', () => {
     expect(verdict.kind).toBe('deny');
   });
 
-  it('wardenWrap: routes tool_use blocks through warden', async () => {
+  it('wardenWrap enforce (default): denied tool_use → throws WardenDenied', async () => {
     const message: AnthropicMessage = {
       id: 'msg_e2e_1',
       type: 'message',
@@ -72,8 +72,42 @@ maybeDescribe('e2e against warden-lite', () => {
         },
       },
     );
+    try {
+      await wrapped.messages.create({});
+      expect.fail('expected WardenDenied');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WardenDenied);
+      const denied = e as WardenDenied;
+      expect(denied.toolName).toBe('sql_execute');
+      expect(denied.intentCategory).toBe('DangerousTool');
+    }
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]?.kind).toBe('deny');
+  });
+
+  it('wardenWrap observe: denied tool_use → passes through, onVerdict fires', async () => {
+    const message: AnthropicMessage = {
+      id: 'msg_e2e_2',
+      type: 'message',
+      role: 'assistant',
+      content: [
+        { type: 'tool_use', id: 'toolu_e2e_obs', name: 'sql_execute', input: { q: 'SELECT 1' } },
+      ],
+      stop_reason: 'tool_use',
+    };
+    const verdicts: WardenVerdict[] = [];
+    const wrapped = wardenWrap(
+      { messages: { create: async () => message } },
+      {
+        ...opts,
+        mode: 'observe',
+        onVerdict: (v) => {
+          verdicts.push(v);
+        },
+      },
+    );
     const result = await wrapped.messages.create({});
-    expect(result.id).toBe('msg_e2e_1');
+    expect(result.id).toBe('msg_e2e_2');
     expect(verdicts).toHaveLength(1);
     expect(verdicts[0]?.kind).toBe('deny');
   });
