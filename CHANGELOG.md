@@ -6,6 +6,49 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 0.x means the public API is still settling — we'll cut 1.0 when the
 shape stabilizes against the first 3 design partners.
 
+## [0.2.0] - 2026-05-11
+
+Yellow-tier release. Pairs with `warden-lite` 0.2.0+'s async-HIL wire
+contract (`202 Accepted` from `/mcp`, `GET /pending/{id}` poll,
+`POST /pending/{id}/decide`). Adds the `WardenPending.resolve()`
+helper so partners can `try { create() } catch (WardenPending) { await
+e.resolve() }` without writing poll loops or callback servers.
+
+### Added
+
+- **`WardenPending.resolve(opts?)`** — polls warden-lite until an
+  operator decides. Returns void on `allow`, throws `WardenDenied` on
+  `deny`, throws `WardenTransportError` on timeout. Defaults:
+  `pollIntervalMs: 2_000`, `timeoutMs: 600_000`. Transient transport
+  errors (5xx, network blips) are swallowed between polls; 401 / 404
+  surface immediately. The poll callback is pre-bound at throw time
+  closing over `endpoint + token + fetch`, so resolve doesn't need to
+  re-read the original options.
+- **`WardenPending.reviewReasons`** — carries the `review_reasons`
+  array warden-lite emits in the 202 body. Useful for surfacing in a
+  UI (`"this call is awaiting approval because: …"`).
+- **`pollPendingOnce(correlationId, opts)`** — exported low-level
+  helper for callers who want to drive the poll loop themselves.
+- **`WardenVerdict.pending`** now carries `reviewReasons: string[]`.
+- **`WardenPendingResponse`** / **`WardenPendingView`** types model the
+  202 body and the GET-pending body respectively.
+- **Demo**: third scenario (`transfer_funds`) demonstrates the
+  catch-resolve-retry pattern end-to-end. The demo runner auto-approves
+  via `POST /pending/{id}/decide` after 1.5s; in production that's a
+  Slack approval or dashboard click — the SDK side is identical.
+
+### Migration notes
+
+- The `WardenPending` constructor now requires `reviewReasons` and a
+  `pollOnce` callback. Direct construction was always internal; only
+  the wrap and stream code paths instantiate it, so partner code
+  catching the throw is unaffected.
+- A 202 response from `/mcp` was previously surfaced as
+  `WardenTransportError` (unexpected status). It now parses cleanly to
+  the pending verdict. If you had a `catch` branch on the transport
+  error specifically expecting 202, update it to handle
+  `WardenPending`.
+
 ## [0.1.0] - 2026-05-11
 
 First published release. Wraps your Anthropic or OpenAI client so
@@ -52,4 +95,5 @@ your tool-execution loop runs it.
 - Both `@anthropic-ai/sdk` and `openai` are peer-deps. Install
   whichever you use; the SDK has no hard import on either.
 
+[0.2.0]: https://github.com/vanteguardlabs/warden-ai-sdk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/vanteguardlabs/warden-ai-sdk/releases/tag/v0.1.0

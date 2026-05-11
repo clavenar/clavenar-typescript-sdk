@@ -1,12 +1,13 @@
-# @warden/ai-sdk demo policy.
+# @vanteguardlabs/warden-ai-sdk demo policy.
 #
 # Loaded by warden-lite via `--policies examples/demo/policies`. Same
 # `warden.authz` package as the default governance.rego, so partners
 # can see the canonical "ship your own rules alongside the defaults"
-# pattern. For the screencap we only need two rules:
+# pattern. Three rules cover the three tiers:
 #
-#   - delete_user: hard-deny. The "blocks the destructive call" path.
-#   - everything else (fetch_user, list_users, ...): allowed.
+#   - delete_user: hard-deny.  → 403, WardenDenied (red).
+#   - transfer_funds: review.  → 202, WardenPending, await resolve() (yellow).
+#   - everything else:         → 200 (green, fetch_user, list_users, …).
 
 package warden.authz
 
@@ -22,13 +23,13 @@ deny contains msg if {
 	msg := "Violation: delete_user is a destructive operation — block by default, require an explicit allowlist."
 }
 
-# warden-lite queries data.warden.authz.review even when no review-tier
-# rules apply. Define a never-firing baseline so the rule path exists;
-# real review rules (e.g., wire_transfer in the default governance.rego)
-# get added the same way.
+# Yellow tier — high-value money moves park for human review. Pairs
+# with WardenPending + await resolve() on the SDK side: the partner's
+# operator (or, in the demo, the auto-approver in run.ts) flips the
+# pending via POST /pending/{correlation_id}/decide.
 review contains msg if {
-	false
-	msg := "unreachable"
+	input.tool_type == "transfer_funds"
+	msg := "Review: transfer_funds requires human approval before execution."
 }
 
 # allow iff no deny rule fired.

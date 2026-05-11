@@ -1,10 +1,14 @@
-# Week-1 demo
+# Demo — three-tier wrap pattern
 
-End-to-end demonstration of the `@vanteguardlabs/warden-ai-sdk` wrap pattern. Runs a
-mocked Anthropic client through `wardenWrap` and shows two outcomes:
+End-to-end demonstration of the `@vanteguardlabs/warden-ai-sdk` wrap
+pattern. Runs a mocked Anthropic client through `wardenWrap` and shows
+all three outcomes:
 
-- `fetch_user` is allowed by policy → message passes through.
-- `delete_user` is denied by policy → `WardenDenied` is thrown.
+- `fetch_user` is allowed by policy → message passes through. (green)
+- `delete_user` is denied by policy → `WardenDenied` is thrown. (red)
+- `transfer_funds` parks for human review → `WardenPending` is thrown;
+  the demo auto-approves after 1.5s; `await pending.resolve()`
+  completes; the agent loop proceeds. (yellow)
 
 ## What's in the box
 
@@ -36,19 +40,30 @@ pnpm demo
 Expected output (enforce mode, the default):
 
 ```
-[1/2] agent: "fetch user 42"
+[1/3] agent: "fetch user 42"
         tool_use: fetch_user({"id":42})
         warden:   [ALLOW] tool="fetch_user"
         result:   message returned, your tool-execution loop runs the tool
 
-[2/2] agent: "delete user 42"
+[2/3] agent: "delete user 42"
         tool_use: delete_user({"id":42})
         warden:   [DENY]  tool="delete_user" intent="Routine"
         result:   WardenDenied thrown — your existing throw-handler kicks in
                   toolName=delete_user
                   intentCategory=Routine
                   reason: Violation: delete_user is a destructive operation …
+
+[3/3] agent: "transfer $100 from acct-A to acct-B"
+        tool_use: transfer_funds({"from":"acct-A","to":"acct-B","amount":100})
+        warden:   [PEND]  tool="transfer_funds" corr="…"
+                  reason: Review: transfer_funds requires human approval before execution.
+                  awaiting operator decision …
+        result:   approved — agent loop proceeds with the tool call
 ```
+
+The yellow scenario auto-approves via the demo runner. In production
+this would be a Slack approval or a dashboard click — the SDK side is
+identical: `catch (e instanceof WardenPending) { await e.resolve(); }`.
 
 ### Observe mode
 
@@ -82,3 +97,27 @@ The `intent="Routine"` line in the deny verdict is intentional: the
 heuristic Brain didn't flag `delete_user` as dangerous (it has no
 keyword match), but the **policy** denied it. Two independent layers,
 both running, either one able to veto. That's the point.
+
+## How the yellow tier wires up
+
+`policies/demo.rego` declares a `review` rule for `transfer_funds`.
+That rule fires alongside `allow := true`, which the proxy classifies
+as **yellow** and parks: warden-lite responds `202 Accepted` with
+`{status, correlation_id, review_reasons}` and stashes the request in
+its `pendings` table.
+
+SDK side, the wrap throws `WardenPending` carrying the correlation id
+and a pre-bound poll closure. The demo runner schedules an
+auto-approve fetch to `POST /pending/{id}/decide` after 1.5s; meanwhile
+the partner code does `await pending.resolve()`, which polls
+`GET /pending/{id}` every 250ms until `decision` flips.
+
+Three transitions:
+
+- `decision: "allow"` → `resolve()` returns void, agent proceeds.
+- `decision: "deny"`  → `resolve()` throws `WardenDenied` (same shape
+  as the synchronous deny path, with the operator's note as the reason).
+- Deadline elapsed    → `resolve()` throws `WardenTransportError`.
+
+Default `pollIntervalMs: 2000`, `timeoutMs: 600_000` (10 minutes); pass
+your own values if your approval cycle is faster or slower.

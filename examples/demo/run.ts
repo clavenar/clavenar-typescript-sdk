@@ -12,7 +12,7 @@
  *     --ledger :memory: --upstream http://127.0.0.1:9 \
  *     --token demo-token
  */
-import { WardenDenied, wardenWrap } from '../../src/index.js';
+import { WardenDenied, WardenPending, wardenWrap } from '../../src/index.js';
 import type { AnthropicMessage } from '../../src/anthropic.js';
 import type { WardenVerdict, WardenVerdictContext } from '../../src/types.js';
 
@@ -39,6 +39,18 @@ const scenarios: Array<{ label: string; message: AnthropicMessage }> = [
     message: makeMessage('msg_delete', [
       { type: 'text', text: 'I will remove the user.' },
       { type: 'tool_use', id: 'toolu_delete', name: 'delete_user', input: { id: 42 } },
+    ]),
+  },
+  {
+    label: 'transfer $100 from acct-A to acct-B',
+    message: makeMessage('msg_transfer', [
+      { type: 'text', text: 'I will move the funds.' },
+      {
+        type: 'tool_use',
+        id: 'toolu_transfer',
+        name: 'transfer_funds',
+        input: { from: 'acct-A', to: 'acct-B', amount: 100 },
+      },
     ]),
   },
 ];
@@ -87,7 +99,30 @@ async function runScenario(
       console.log('        result:   message returned, your tool-execution loop runs the tool');
     }
   } catch (e) {
-    if (e instanceof WardenDenied) {
+    if (e instanceof WardenPending) {
+      // onVerdict already printed the [PEND] header — pick up from
+      // the review reason and the await.
+      console.log(`                  reason: ${e.reviewReasons[0] ?? '(no review reason)'}`);
+      console.log(`                  awaiting operator decision …`);
+      // In production, the operator approves from Slack / a dashboard.
+      // The demo auto-approves after a short pause so the screencap
+      // doesn't require human input. resolve() polls until decision.
+      scheduleAutoApprove(e.correlationId, 1_500).catch((err) => {
+        console.log(`                  (auto-approve helper failed: ${(err as Error).message})`);
+      });
+      try {
+        await e.resolve({ pollIntervalMs: 250, timeoutMs: 15_000 });
+        console.log(`        result:   approved — agent loop proceeds with the tool call`);
+      } catch (rerr) {
+        if (rerr instanceof WardenDenied) {
+          console.log(`        result:   denied by operator — WardenDenied thrown out of resolve()`);
+          console.log(`                  reasons: ${rerr.reasons.join(' | ')}`);
+        } else {
+          console.log(`        result:   resolve failed: ${(rerr as Error).message}`);
+          process.exitCode = 1;
+        }
+      }
+    } else if (e instanceof WardenDenied) {
       console.log(`        result:   WardenDenied thrown — your existing throw-handler kicks in`);
       console.log(`                  toolName=${e.toolName}`);
       console.log(`                  intentCategory=${e.intentCategory}`);
@@ -99,6 +134,19 @@ async function runScenario(
       console.log(`                  ${(e as Error).message}`);
       process.exitCode = 1;
     }
+  }
+}
+
+async function scheduleAutoApprove(correlationId: string, delayMs: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, delayMs));
+  const url = `${endpoint}/pending/${encodeURIComponent(correlationId)}/decide`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'allow', note: 'auto-approved by demo runner' }),
+  });
+  if (!resp.ok) {
+    throw new Error(`decide endpoint returned ${resp.status}: ${await resp.text()}`);
   }
 }
 
