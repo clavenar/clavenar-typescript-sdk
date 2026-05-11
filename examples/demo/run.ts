@@ -25,6 +25,10 @@ const mode: 'enforce' | 'observe' =
   process.env['OBSERVE'] === '1' || process.env['OBSERVE'] === 'true'
     ? 'observe'
     : 'enforce';
+// WARDEN_DEMO_PAUSE_MS adds a per-scenario reading pause — used when
+// recording the outreach screencap so viewers can absorb each verdict
+// before the next one prints. Default 0: no effect on normal `pnpm demo`.
+const pauseMs = Number(process.env['WARDEN_DEMO_PAUSE_MS'] ?? '0');
 
 const scenarios: Array<{ label: string; message: AnthropicMessage }> = [
   {
@@ -60,7 +64,13 @@ await main();
 async function main(): Promise<void> {
   banner();
   for (const [i, scenario] of scenarios.entries()) {
+    if (i > 0 && pauseMs > 0) {
+      await new Promise((r) => setTimeout(r, pauseMs));
+    }
     await runScenario(i + 1, scenarios.length, scenario.label, scenario.message);
+  }
+  if (pauseMs > 0) {
+    await new Promise((r) => setTimeout(r, pauseMs));
   }
   console.log('');
   console.log('Demo complete. Ledger entries are visible in warden-lite stdout.');

@@ -1,5 +1,7 @@
 # Demo — three-tier wrap pattern
 
+![Three-tier wrap pattern in action](./demo.gif)
+
 End-to-end demonstration of the `@vanteguardlabs/warden-ai-sdk` wrap
 pattern. Runs a mocked Anthropic client through `wardenWrap` and shows
 all three outcomes:
@@ -81,15 +83,19 @@ would-have-denies, then flip to enforce when the verdicts settle.
 
 ## Recording the screencap
 
-For the website / outreach reel:
+`demo.gif` at the top of this README was produced with:
 
 ```sh
-asciinema rec --command 'pnpm demo' demo.cast
-asciinema upload demo.cast      # or convert to gif: agg demo.cast demo.gif
+WARDEN_DEMO_PAUSE_MS=2200 \
+  asciinema rec --overwrite --idle-time-limit 3 \
+    --cols 130 --rows 38 \
+    --command 'pnpm demo' demo.cast
+agg --font-family 'DejaVu Sans Mono' demo.cast demo.gif
 ```
 
-The full run is ~3 seconds; the read-aloud script is what fills the
-60 seconds.
+`WARDEN_DEMO_PAUSE_MS` inserts a per-scenario reading pause so viewers
+can absorb each verdict before the next prints. Defaults to 0 — normal
+`pnpm demo` runs at native speed.
 
 ## Why both layers fire on `delete_user`
 
