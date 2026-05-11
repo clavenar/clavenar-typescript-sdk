@@ -1,0 +1,63 @@
+{
+  "name": "@warden/ai-sdk",
+  "version": "0.0.1",
+  "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Agent Warden before it runs.",
+  "license": "Apache-2.0",
+  "author": "VanteguardLabs <vanteguardlabs@gmail.com>",
+  "homepage": "https://warden.vanteguardlabs.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vanteguardlabs/warden-ai-sdk"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.30.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": { "optional": true }
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@types/node": "^20.11.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  },
+  "keywords": [
+    "warden",
+    "agent-warden",
+    "ai-security",
+    "mcp",
+    "anthropic",
+    "openai",
+    "tool-use",
+    "policy",
+    "audit"
+  ]
+}
