@@ -6,6 +6,23 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 0.x means the public API is still settling — we'll cut 1.0 when the
 shape stabilizes against the first 3 design partners.
 
+## [0.2.1] - 2026-05-11
+
+Docs-only patch. No code changes — same `dist/` bytes as 0.2.0.
+
+### Fixed
+
+- CHANGELOG previously claimed v0.2.0 of the SDK "pairs with
+  `warden-lite` 0.2.0+". Not true: the async-HIL wire contract (202
+  Accepted, `/pending/{id}` endpoints, decide endpoint) only landed
+  in `warden-lite` v0.3.0. The 0.2.0 entry now carries a clarifying
+  note pinning the floor at v0.3.0.
+- README quickstart's `docker run … warden-lite` referenced an
+  unqualified image name; switched to
+  `ghcr.io/vanteguardlabs/warden-lite:latest`. Dropped the broken
+  `cargo install warden-lite` reference (the crate isn't on
+  crates.io).
+
 ## [0.2.0] - 2026-05-11
 
 Yellow-tier release. Pairs with `warden-lite` 0.3.0+'s async-HIL wire
@@ -100,5 +117,6 @@ your tool-execution loop runs it.
 - Both `@anthropic-ai/sdk` and `openai` are peer-deps. Install
   whichever you use; the SDK has no hard import on either.
 
+[0.2.1]: https://github.com/vanteguardlabs/warden-ai-sdk/releases/tag/v0.2.1
 [0.2.0]: https://github.com/vanteguardlabs/warden-ai-sdk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/vanteguardlabs/warden-ai-sdk/releases/tag/v0.1.0
