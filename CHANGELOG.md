@@ -6,6 +6,29 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 0.x means the public API is still settling — we'll cut 1.0 when the
 shape stabilizes against the first 3 design partners.
 
+## [0.3.0] - 2026-05-12
+
+### Added
+
+- **`onPolicyError` callback** on `WardenOptions`. Fires when an
+  inspection fails at the transport layer (warden unreachable, 5xx
+  after retries exhausted, malformed body, …). In `mode: 'observe'`
+  this is the new signal partners log/alert on instead of try/catch
+  around `create()`. In `mode: 'enforce'` the SDK still throws —
+  fail-closed is the safer enforce semantic, and the callback is
+  not invoked.
+
+### Fixed
+
+- **Observe-mode transport-error resilience.** Previously, a warden
+  outage during inspection would propagate the `WardenTransportError`
+  back through `create()` in observe mode too, contradicting the
+  documented contract ("no throw, every verdict via `onVerdict`,
+  response passes through"). Now observe catches transport failures
+  per-call so one warden outage doesn't poison a Promise.all of
+  parallel tool_use inspections; the underlying agent call passes
+  through and `onPolicyError` fires. Enforce mode is unchanged.
+
 ## [0.2.1] - 2026-05-11
 
 Docs-only patch. No code changes — same `dist/` bytes as 0.2.0.

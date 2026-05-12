@@ -175,6 +175,7 @@ end-to-end against a local warden-lite:
 | `mode` | `'enforce' \| 'observe'` | `'enforce'` | throw on deny vs. record only |
 | `timeoutMs` | `number` | `10_000` | per-inspection HTTP timeout |
 | `onVerdict` | `(v, ctx) => void \| Promise<void>` | `undefined` | fires per inspected `tool_use` (before any throw) |
+| `onPolicyError` | `(e, ctx) => void \| Promise<void>` | `undefined` | observe mode only — fires when warden inspection fails at the transport layer (unreachable, 5xx after retries, malformed body). The underlying agent call passes through regardless. In enforce mode the SDK throws `WardenTransportError` and this callback does not fire. |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | override for testing |
 | `retry` | `{ maxAttempts, baseDelayMs }` | `{ 3, 100 }` | network errors + 5xx retry with jittered exponential backoff. `maxAttempts: 1` disables. |
 

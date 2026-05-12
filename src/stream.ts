@@ -16,7 +16,12 @@
  * observe-mode telemetry stays consistent with the non-streaming path.
  */
 
-import { WardenDenied, WardenPending, WardenConfigError } from './errors.js';
+import {
+  WardenConfigError,
+  WardenDenied,
+  WardenPending,
+  WardenTransportError,
+} from './errors.js';
 import {
   isContentBlockStart,
   isContentBlockDelta,
@@ -177,7 +182,16 @@ async function inspectAndMaybeThrow(
   opts: WardenOptions,
   enforce: boolean,
 ): Promise<void> {
-  const verdict: WardenVerdict = await inspectToolUse(call, opts);
+  let verdict: WardenVerdict;
+  try {
+    verdict = await inspectToolUse(call, opts);
+  } catch (e) {
+    if (!enforce && e instanceof WardenTransportError) {
+      await firePolicyError(e, call, opts);
+      return;
+    }
+    throw e;
+  }
   await processVerdict(verdict, call, opts, enforce);
 }
 
@@ -185,6 +199,11 @@ async function inspectAndMaybeThrow(
  * OpenAI choice-end batch: every tool call in one choice inspected
  * concurrently, verdicts processed in submission order. First deny
  * still throws first — same semantics as the non-streaming path.
+ *
+ * Observe-mode transport failures are caught per-call (mirroring
+ * `inspectAllToolCalls` in wrap.ts) so one warden outage doesn't
+ * abort the stream — observe mode's contract is "no throw, response
+ * passes through" and the stream wrapper has to honor it too.
  */
 async function inspectChoiceBatch(
   calls: NormalizedToolCall[],
@@ -192,10 +211,40 @@ async function inspectChoiceBatch(
   enforce: boolean,
 ): Promise<void> {
   if (calls.length === 0) return;
-  const verdicts = await Promise.all(calls.map((c) => inspectToolUse(c, opts)));
+  const results = await Promise.all(
+    calls.map(async (c) => {
+      try {
+        return { ok: true as const, verdict: await inspectToolUse(c, opts) };
+      } catch (e) {
+        if (!enforce && e instanceof WardenTransportError) {
+          return { ok: false as const, error: e };
+        }
+        throw e;
+      }
+    }),
+  );
   for (let i = 0; i < calls.length; i++) {
-    await processVerdict(verdicts[i]!, calls[i]!, opts, enforce);
+    const result = results[i]!;
+    const call = calls[i]!;
+    if (!result.ok) {
+      await firePolicyError(result.error, call, opts);
+      continue;
+    }
+    await processVerdict(result.verdict, call, opts, enforce);
   }
+}
+
+async function firePolicyError(
+  error: WardenTransportError,
+  call: NormalizedToolCall,
+  opts: WardenOptions,
+): Promise<void> {
+  if (!opts.onPolicyError) return;
+  await opts.onPolicyError(error, {
+    toolName: call.name,
+    toolUseId: call.id,
+    toolInput: call.input,
+  });
 }
 
 async function processVerdict(

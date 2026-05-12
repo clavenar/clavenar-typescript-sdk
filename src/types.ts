@@ -24,6 +24,28 @@ export interface WardenOptions {
    */
   onVerdict?: (verdict: WardenVerdict, ctx: WardenVerdictContext) => void | Promise<void>;
   /**
+   * Called when an inspection fails at the transport layer (warden
+   * unreachable, 5xx after retries exhausted, malformed body, …).
+   *
+   * In `mode: 'observe'` this fires per failed inspection and the
+   * underlying agent call is treated as allowed — the SDK's
+   * observe-mode promise ("no throw, response passes through") is
+   * preserved even when warden itself is down. Use this hook to log
+   * / alert / fall back to a default deny on your side.
+   *
+   * In `mode: 'enforce'` the SDK still throws the transport error
+   * (fail-closed is the safer enforce semantic), and this callback
+   * is NOT invoked — wrap the create() call in try/catch like any
+   * other transport failure.
+   *
+   * Errors thrown from the callback itself are propagated to the
+   * caller. Default: no-op.
+   */
+  onPolicyError?: (
+    error: import('./errors.js').WardenTransportError,
+    ctx: WardenVerdictContext,
+  ) => void | Promise<void>;
+  /**
    * Retry policy applied per inspection. Defaults to 3 attempts
    * with 100ms base delay. Set `maxAttempts: 1` to disable retries.
    */

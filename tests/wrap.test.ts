@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { wardenWrap, WardenConfigError, WardenDenied, WardenPending } from '../src/index.js';
+import {
+  wardenWrap,
+  WardenConfigError,
+  WardenDenied,
+  WardenPending,
+  WardenTransportError,
+} from '../src/index.js';
 import type { AnthropicMessage } from '../src/anthropic.js';
 import type { WardenVerdict, WardenVerdictContext } from '../src/types.js';
 
@@ -380,5 +386,98 @@ describe('wardenWrap (pending verdict throws WardenPending)', () => {
     }
     vi.doUnmock('../src/transport.js');
     vi.resetModules();
+  });
+});
+
+describe('wardenWrap (observe-mode transport-error resilience)', () => {
+  it('observe mode: warden down → response passes through, onPolicyError fires', async () => {
+    const message = makeMessage([
+      { type: 'tool_use', id: 'toolu_x', name: 'fetch_user', input: { id: 1 } },
+    ]);
+    // Reject every fetch — warden-lite is unreachable / down.
+    const fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+    const create = vi.fn().mockResolvedValue(message);
+    const policyErrors: Array<{ tool: string; status?: number }> = [];
+
+    const wrapped = wardenWrap(
+      { messages: { create } },
+      {
+        endpoint: 'http://w',
+        fetch,
+        mode: 'observe',
+        retry: { maxAttempts: 1, baseDelayMs: 0 },
+        onPolicyError: (e, ctx) => {
+          policyErrors.push({ tool: ctx.toolName, status: e.status });
+        },
+      },
+    );
+
+    // No throw despite warden being unreachable — observe contract.
+    const result = await wrapped.messages.create({});
+    expect(result).toBe(message);
+    expect(policyErrors).toEqual([{ tool: 'fetch_user', status: undefined }]);
+  });
+
+  it('observe mode: one transport failure doesn\'t poison other inspections', async () => {
+    const message = makeMessage([
+      { type: 'tool_use', id: 'toolu_a', name: 'fetch_user', input: { id: 1 } },
+      { type: 'tool_use', id: 'toolu_b', name: 'delete_user', input: { id: 1 } },
+    ]);
+    // First inspect succeeds, second fails — observe should fire
+    // onVerdict for the first and onPolicyError for the second.
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(allowResponse())
+      .mockRejectedValueOnce(new TypeError('connection refused'));
+    const create = vi.fn().mockResolvedValue(message);
+    const verdicts: string[] = [];
+    const policyErrors: string[] = [];
+
+    const wrapped = wardenWrap(
+      { messages: { create } },
+      {
+        endpoint: 'http://w',
+        fetch,
+        mode: 'observe',
+        retry: { maxAttempts: 1, baseDelayMs: 0 },
+        onVerdict: (_v, ctx) => {
+          verdicts.push(ctx.toolName);
+        },
+        onPolicyError: (_e, ctx) => {
+          policyErrors.push(ctx.toolName);
+        },
+      },
+    );
+
+    await wrapped.messages.create({});
+
+    expect(verdicts).toEqual(['fetch_user']);
+    expect(policyErrors).toEqual(['delete_user']);
+  });
+
+  it('enforce mode (default): transport failure still throws WardenTransportError', async () => {
+    const message = makeMessage([
+      { type: 'tool_use', id: 'toolu_x', name: 'fetch_user', input: { id: 1 } },
+    ]);
+    const fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+    const create = vi.fn().mockResolvedValue(message);
+    const policyErrors: number[] = [];
+
+    const wrapped = wardenWrap(
+      { messages: { create } },
+      {
+        endpoint: 'http://w',
+        fetch,
+        retry: { maxAttempts: 1, baseDelayMs: 0 },
+        onPolicyError: () => {
+          policyErrors.push(1);
+        },
+      },
+    );
+
+    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(WardenTransportError);
+    // Enforce mode never invokes onPolicyError — the throw is the
+    // signal, and the callback exists for observe consumers only.
+    expect(policyErrors).toEqual([]);
   });
 });
