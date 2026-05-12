@@ -39,3 +39,13 @@ export type {
   OpenAIChatToolCallDelta,
 } from './openai.js';
 export { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';
+export {
+  inspectRealtimeFunctionCall,
+  isRealtimeFunctionCallDone,
+  normalizeRealtimeFunctionCall,
+} from './realtime.js';
+export type {
+  OpenAIRealtimeFunctionCallDone,
+  OpenAIRealtimeOtherEvent,
+  OpenAIRealtimeServerEvent,
+} from './realtime.js';

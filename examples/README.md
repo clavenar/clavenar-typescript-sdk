@@ -13,6 +13,8 @@ points at the load-bearing pattern in 30 seconds.
 | [`vercel-ai/`](./vercel-ai) | Intercept Vercel AI SDK's `toolCalls` array via `inspectToolUse` before dispatching. |
 | [`mastra/`](./mastra) | `withWardenGate(name, execute)` helper that wraps any Mastra tool's `execute` function. |
 | [`langchain-js/`](./langchain-js) | `wardenTool(name, description, func)` factory for LangChain DynamicTool registration. |
+| [`anthropic-computer-use/`](./anthropic-computer-use) | Wrap an Anthropic client that uses `computer` / `bash` / `str_replace_editor` tools. Same `wardenWrap` pattern; the policy snippet shows how to gate destructive actions. |
+| [`openai-realtime/`](./openai-realtime) | Inspect tool calls a Realtime websocket emits. `isRealtimeFunctionCallDone` + `inspectRealtimeFunctionCall` plug into your WS message pump. |
 
 Python equivalents (using
 [`warden-ai`](https://pypi.org/project/warden-ai) instead of this
