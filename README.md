@@ -242,6 +242,20 @@ End-to-end tests (5 cases against live warden-lite) skip unless
 WARDEN_E2E_ENDPOINT=http://localhost:8088 WARDEN_E2E_TOKEN=... pnpm test
 ```
 
+## Wire contract
+
+The HTTP shape this SDK speaks against the inspect endpoint
+(`POST /inspect`, the verdict envelope, the pending / resolve
+contract, and the `X-Warden-*` header set) is documented in the
+workspace's source of truth:
+[`warden-specs/TECH_SPEC.md`](https://github.com/vanteguardlabs/warden-specs/blob/main/TECH_SPEC.md).
+This SDK is a faithful client of that contract — if you observe a
+divergence, file the bug against the spec first.
+
+The Python sibling at
+[`warden-ai-py`](https://github.com/vanteguardlabs/warden-ai-py)
+implements the same wire contract with parity guarantees.
+
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).

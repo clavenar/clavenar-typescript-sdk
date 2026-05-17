@@ -3,7 +3,6 @@ import {
   wardenWrap,
   WardenConfigError,
   WardenDenied,
-  WardenPending,
   WardenTransportError,
 } from '../src/index.js';
 import type { AnthropicMessage } from '../src/anthropic.js';
