@@ -8,6 +8,12 @@ Wraps your Anthropic or OpenAI client and inspects every tool call
 the model emits against your policies *before* your tool-execution
 loop runs it.
 
+Sequence diagrams for the five primary paths — `wardenWrap` boot +
+structural detection, non-streaming inspection, streaming
+choice-end gating, `WardenPending.resolve` poll loop, and the
+standalone OpenAI Realtime helper — plus a request decision-tree
+flowchart, live in [`docs/SEQUENCES.md`](docs/SEQUENCES.md).
+
 ## Quickstart
 
 Three commands from zero to a verdict:
