@@ -164,7 +164,7 @@ sequenceDiagram
         end
         loop every choiceIdx queued for inspection (BEFORE yielding the chunk)
             Gen->>Drain: drainChoice(bufs, choiceIdx)
-            Drain->>Drain: collect every key with prefix 'choiceIdx:'; JSON.parse(argsBuf); error -> throw WardenConfigError unparseable arguments
+            Drain->>Drain: collect every key with prefix 'choiceIdx:' — JSON.parse(argsBuf) — error -> throw WardenConfigError unparseable arguments
             Drain-->>Gen: NormalizedToolCall[]
             Gen->>Batch: inspectChoiceBatch(calls, opts, enforce)
             par parallel inspect every tool call in the choice
@@ -178,7 +178,7 @@ sequenceDiagram
                     Batch->>Caller: await onVerdict(verdict, ctx)
                 end
                 alt observe mode AND inspectToolUse threw WardenTransportError
-                    Batch->>Caller: await onPolicyError(e, ctx); continue (response passes through)
+                    Batch->>Caller: await onPolicyError(e, ctx) — continue (response passes through)
                 else enforce AND deny
                     Batch-->>Caller: throw WardenDenied — chunk never yielded, partner never sees finish_reason
                 else enforce AND pending
@@ -190,7 +190,7 @@ sequenceDiagram
         end
         Gen-->>Caller: yield chunk (only reached if no enforce throw fired)
     end
-    Note over Gen,Caller: Anthropic content_block_stop path is parallel — same accumulate-then-inspect-before-yield logic;<br/>see wrapAnthropicStream in src/stream.ts
+    Note over Gen,Caller: Anthropic content_block_stop path is parallel — same accumulate-then-inspect-before-yield logic —<br/>see wrapAnthropicStream in src/stream.ts
 ```
 
 ## 4. `WardenPending.resolve` — poll until decided, terminal vs transient errors
@@ -214,10 +214,10 @@ sequenceDiagram
 
     Note over Partner: Sec 2 or Sec 3 threw WardenPending — partner caught it
     Partner->>Pending: await pending.resolve({ pollIntervalMs?, timeoutMs? })
-    Pending->>Pending: validate intervals positive; compute deadline = Date.now() + timeoutMs
+    Pending->>Pending: validate intervals positive — compute deadline = Date.now() + timeoutMs
     loop while Date.now() < deadline
         Pending->>Poll: this._pollOnce()
-        Poll->>Poll: AbortController + timeoutMs; build Bearer header if opts.token
+        Poll->>Poll: AbortController + timeoutMs — build Bearer header if opts.token
         Poll->>L: GET /pending/{encodeURIComponent(correlationId)}
         alt 200
             L-->>Poll: WardenPendingView { correlation_id, agent_id, tool_type, method, review_reasons, requested_at, decided_at, decision, decider_note }
@@ -236,7 +236,7 @@ sequenceDiagram
         else 5xx or network or AbortError (transient)
             L-->>Poll: status / err
             Poll-->>Pending: throw WardenTransportError
-            Pending->>Pending: swallow; continue loop
+            Pending->>Pending: swallow — continue loop
         end
     end
     Pending-->>Partner: throw WardenTransportError(warden pending {id} not decided within {timeoutMs}ms)
@@ -268,7 +268,7 @@ sequenceDiagram
     Partner->>Partner: isRealtimeFunctionCallDone(evt) — type guard
     Partner->>Helper: inspectRealtimeFunctionCall(evt, opts)
     Helper->>Norm: normalizeRealtimeFunctionCall(evt)
-    Norm->>Norm: input = JSON.parse(evt.arguments); on failure input = evt.arguments (raw string)
+    Norm->>Norm: input = JSON.parse(evt.arguments) — on failure input = evt.arguments (raw string)
     Norm-->>Helper: NormalizedToolCall { id: evt.call_id, name: evt.name, input }
     Helper->>T: inspectToolUse(call, opts)
     T->>L: POST /mcp (same envelope, same retry semantics as Sec 2)
