@@ -94,18 +94,19 @@ would-have-denies, then flip to enforce when the verdicts settle.
 ```sh
 WARDEN_DEMO_PAUSE_MS=2200 \
   asciinema rec --overwrite --idle-time-limit 3 \
-    --cols 100 --rows 28 \
+    --cols 60 --rows 28 \
     --command 'pnpm demo' demo.cast
-agg --font-family 'DejaVu Sans Mono' --font-size 24 demo.cast demo.gif
+agg --font-family 'DejaVu Sans Mono' --font-size 36 demo.cast demo.gif
 ```
 
-The `--cols 100` cap is tight enough that the deny-reason line wraps
-once — that's the visual cost of larger on-screen letters, because the
-website CSS scales the gif to fit the editions-column width
-(`.lite-gif img { width: 100% }`), so on-screen char width is roughly
-`column-px / cols`. Going lower (90 cols) wraps the PEND corr line and
-the operator command mid-word; going higher (130 cols) keeps lines
-unwrapped but shrinks letters back to barely-readable.
+The `--cols 60` cap is deliberately tight — almost every warden output
+line wraps mid-word, the deny-reason wraps three times, the operator
+command wraps once. That's the explicit visual cost we accept for
+giant on-screen letters: the website now stacks the gif full-width
+above the copy (`.lite-grid` is single-column), so each source char
+renders ~22px wide after the modest CSS downscale to the 1232px
+container. Going lower (cols 50) starts upscaling the source above
+the container width and the gif blurs.
 
 `WARDEN_DEMO_PAUSE_MS` inserts a per-scenario reading pause so viewers
 can absorb each verdict before the next prints. Defaults to 0 — normal
