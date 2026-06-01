@@ -8,7 +8,7 @@
  *      buffered per tool index until the call completes.
  *   2. The closing event (`content_block_stop` for Anthropic, the
  *      `finish_reason: 'tool_calls'` chunk for OpenAI) is held while
- *      warden inspects. On deny in enforce mode we throw before
+ *      clavenar inspects. On deny in enforce mode we throw before
  *      yielding that closing event — partner code never sees a
  *      denied tool call as actionable.
  *
@@ -17,10 +17,10 @@
  */
 
 import {
-  WardenConfigError,
-  WardenDenied,
-  WardenPending,
-  WardenTransportError,
+  ClavenarConfigError,
+  ClavenarDenied,
+  ClavenarPending,
+  ClavenarTransportError,
 } from './errors.js';
 import {
   isContentBlockStart,
@@ -38,11 +38,11 @@ import type {
   OpenAIChatToolCallDelta,
 } from './openai.js';
 import { inspectToolUse, pollPendingOnce } from './transport.js';
-import type { NormalizedToolCall, WardenOptions, WardenVerdict } from './types.js';
+import type { NormalizedToolCall, ClavenarOptions, ClavenarVerdict } from './types.js';
 
 export async function* wrapAnthropicStream(
   upstream: AsyncIterable<AnthropicMessageStreamEvent>,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
 ): AsyncGenerator<AnthropicMessageStreamEvent> {
   type ToolBuf = { id: string; name: string; argsBuf: string };
   const bufs = new Map<number, ToolBuf>();
@@ -83,7 +83,7 @@ export async function* wrapAnthropicStream(
 
 export async function* wrapOpenAIChatStream(
   upstream: AsyncIterable<OpenAIChatCompletionChunk>,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
 ): AsyncGenerator<OpenAIChatCompletionChunk> {
   type ToolBuf = { id?: string; name?: string; argsBuf: string };
   // Keyed by `${choiceIndex}:${toolIndex}` so parallel tool_calls
@@ -110,7 +110,7 @@ export async function* wrapOpenAIChatStream(
 
     // Inspect BEFORE yielding the finishing chunk — partner doesn't
     // see finish_reason='tool_calls' for a choice that has a denied
-    // call until warden clears it. Parallel across all tool calls in
+    // call until clavenar clears it. Parallel across all tool calls in
     // the choice; serial across choices (an unusual N>1 case).
     for (const choiceIdx of choicesToInspect) {
       await inspectChoiceBatch(drainChoice(bufs, choiceIdx), opts, enforce);
@@ -146,7 +146,7 @@ function drainChoice(
     if (!key.startsWith(prefix)) continue;
     bufs.delete(key);
     if (!buf.id || !buf.name) {
-      throw new WardenConfigError(
+      throw new ClavenarConfigError(
         `OpenAI stream chunk finished with finish_reason='tool_calls' but tool_call buffer ${key} is missing id or name`,
       );
     }
@@ -155,7 +155,7 @@ function drainChoice(
       input = buf.argsBuf === '' ? {} : JSON.parse(buf.argsBuf);
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
-      throw new WardenConfigError(
+      throw new ClavenarConfigError(
         `OpenAI tool_call ${buf.id} (${buf.name}) streamed unparseable arguments: ${reason}`,
       );
     }
@@ -170,7 +170,7 @@ function bufToCall(buf: { id: string; name: string; argsBuf: string }): Normaliz
     input = buf.argsBuf === '' ? {} : JSON.parse(buf.argsBuf);
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    throw new WardenConfigError(
+    throw new ClavenarConfigError(
       `Anthropic tool_use ${buf.id} (${buf.name}) streamed unparseable input_json: ${reason}`,
     );
   }
@@ -179,14 +179,14 @@ function bufToCall(buf: { id: string; name: string; argsBuf: string }): Normaliz
 
 async function inspectAndMaybeThrow(
   call: NormalizedToolCall,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
   enforce: boolean,
 ): Promise<void> {
-  let verdict: WardenVerdict;
+  let verdict: ClavenarVerdict;
   try {
     verdict = await inspectToolUse(call, opts);
   } catch (e) {
-    if (!enforce && e instanceof WardenTransportError) {
+    if (!enforce && e instanceof ClavenarTransportError) {
       await firePolicyError(e, call, opts);
       return;
     }
@@ -201,13 +201,13 @@ async function inspectAndMaybeThrow(
  * still throws first — same semantics as the non-streaming path.
  *
  * Observe-mode transport failures are caught per-call (mirroring
- * `inspectAllToolCalls` in wrap.ts) so one warden outage doesn't
+ * `inspectAllToolCalls` in wrap.ts) so one clavenar outage doesn't
  * abort the stream — observe mode's contract is "no throw, response
  * passes through" and the stream wrapper has to honor it too.
  */
 async function inspectChoiceBatch(
   calls: NormalizedToolCall[],
-  opts: WardenOptions,
+  opts: ClavenarOptions,
   enforce: boolean,
 ): Promise<void> {
   if (calls.length === 0) return;
@@ -216,7 +216,7 @@ async function inspectChoiceBatch(
       try {
         return { ok: true as const, verdict: await inspectToolUse(c, opts) };
       } catch (e) {
-        if (!enforce && e instanceof WardenTransportError) {
+        if (!enforce && e instanceof ClavenarTransportError) {
           return { ok: false as const, error: e };
         }
         throw e;
@@ -235,9 +235,9 @@ async function inspectChoiceBatch(
 }
 
 async function firePolicyError(
-  error: WardenTransportError,
+  error: ClavenarTransportError,
   call: NormalizedToolCall,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
 ): Promise<void> {
   if (!opts.onPolicyError) return;
   await opts.onPolicyError(error, {
@@ -248,9 +248,9 @@ async function firePolicyError(
 }
 
 async function processVerdict(
-  verdict: WardenVerdict,
+  verdict: ClavenarVerdict,
   call: NormalizedToolCall,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
   enforce: boolean,
 ): Promise<void> {
   if (opts.onVerdict) {
@@ -262,7 +262,7 @@ async function processVerdict(
   }
   if (!enforce) return;
   if (verdict.kind === 'deny') {
-    throw new WardenDenied({
+    throw new ClavenarDenied({
       toolName: call.name,
       reasons: verdict.payload.reasons,
       reviewReasons: verdict.payload.review_reasons,
@@ -271,7 +271,7 @@ async function processVerdict(
     });
   }
   if (verdict.kind === 'pending') {
-    throw new WardenPending({
+    throw new ClavenarPending({
       toolName: call.name,
       correlationId: verdict.correlationId,
       reviewReasons: verdict.reviewReasons,

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { inspectToolUse, joinUrl, pollPendingOnce } from '../src/transport.js';
-import { WardenTransportError } from '../src/errors.js';
+import { ClavenarTransportError } from '../src/errors.js';
 import type { AnthropicToolUseBlock } from '../src/anthropic.js';
-import type { WardenDenyResponse } from '../src/types.js';
+import type { ClavenarDenyResponse } from '../src/types.js';
 
 const toolUse: AnthropicToolUseBlock = {
   type: 'tool_use',
@@ -29,7 +29,7 @@ describe('inspectToolUse', () => {
   });
 
   it('returns deny + parsed payload on 403', async () => {
-    const denyBody: WardenDenyResponse = {
+    const denyBody: ClavenarDenyResponse = {
       error: 'security_violation',
       reasons: ['policy: delete_user blocked'],
       review_reasons: [],
@@ -40,25 +40,25 @@ describe('inspectToolUse', () => {
     expect(verdict).toEqual({ kind: 'deny', payload: denyBody });
   });
 
-  it('throws WardenTransportError on 401', async () => {
+  it('throws ClavenarTransportError on 401', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(401, 'missing or invalid bearer token'));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 401,
     });
   });
 
-  it('throws WardenTransportError on 502', async () => {
+  it('throws ClavenarTransportError on 502', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(502, 'upstream unreachable'));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toBeInstanceOf(
-      WardenTransportError,
+      ClavenarTransportError,
     );
   });
 
-  it('throws WardenTransportError on malformed 403 body', async () => {
+  it('throws ClavenarTransportError on malformed 403 body', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(403, { wrong: 'shape' }));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 403,
     });
   });
@@ -115,7 +115,7 @@ describe('inspectToolUse', () => {
     await expect(
       inspectToolUse(toolUse, { endpoint: 'http://w', timeoutMs: 5, fetch }),
     ).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       message: expect.stringContaining('timed out after 5ms'),
     });
   });
@@ -158,7 +158,7 @@ describe('inspectToolUse (retry on transient errors)', () => {
         fetch,
         retry: { maxAttempts: 3, baseDelayMs: 1 },
       }),
-    ).rejects.toMatchObject({ name: 'WardenTransportError', status: 503 });
+    ).rejects.toMatchObject({ name: 'ClavenarTransportError', status: 503 });
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
@@ -199,7 +199,7 @@ describe('inspectToolUse (retry on transient errors)', () => {
         fetch,
         retry: { maxAttempts: 1, baseDelayMs: 1 },
       }),
-    ).rejects.toBeInstanceOf(WardenTransportError);
+    ).rejects.toBeInstanceOf(ClavenarTransportError);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
@@ -216,17 +216,17 @@ describe('inspectToolUse (correlation id)', () => {
     });
   }
 
-  it('surfaces X-Warden-Correlation-Id on an allow verdict', async () => {
+  it('surfaces X-Clavenar-Correlation-Id on an allow verdict', async () => {
     const fetch = vi
       .fn()
       .mockResolvedValue(
-        fakeResponseWithHeaders(200, { ok: true }, { 'X-Warden-Correlation-Id': 'corr_a' }),
+        fakeResponseWithHeaders(200, { ok: true }, { 'X-Clavenar-Correlation-Id': 'corr_a' }),
       );
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({ kind: 'allow', correlationId: 'corr_a' });
   });
 
-  it('surfaces X-Warden-Correlation-Id on a deny verdict', async () => {
+  it('surfaces X-Clavenar-Correlation-Id on a deny verdict', async () => {
     const fetch = vi.fn().mockResolvedValue(
       fakeResponseWithHeaders(
         403,
@@ -236,7 +236,7 @@ describe('inspectToolUse (correlation id)', () => {
           review_reasons: [],
           intent_category: 'PolicyDeny',
         },
-        { 'X-Warden-Correlation-Id': 'corr_b' },
+        { 'X-Clavenar-Correlation-Id': 'corr_b' },
       ),
     );
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
@@ -268,7 +268,7 @@ describe('inspectToolUse (202 pending)', () => {
   it('returns pending verdict with reviewReasons + correlationId from header', async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValue(pendingResponse({ 'X-Warden-Correlation-Id': 'corr_pending_42' }));
+      .mockResolvedValue(pendingResponse({ 'X-Clavenar-Correlation-Id': 'corr_pending_42' }));
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({
       kind: 'pending',
@@ -294,7 +294,7 @@ describe('inspectToolUse (202 pending)', () => {
       }),
     );
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 202,
     });
   });
@@ -302,7 +302,7 @@ describe('inspectToolUse (202 pending)', () => {
   it('throws when 202 is unparseable', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('not json', { status: 202 }));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 202,
     });
   });
@@ -358,7 +358,7 @@ describe('pollPendingOnce', () => {
   it('throws on a 404 with the status surfaced', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('no such pending', { status: 404 }));
     await expect(pollPendingOnce('corr_p', { endpoint: 'http://w', fetch })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 404,
     });
   });
@@ -366,7 +366,7 @@ describe('pollPendingOnce', () => {
   it('throws on a 401 with the status surfaced', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('bad token', { status: 401 }));
     await expect(pollPendingOnce('corr_p', { endpoint: 'http://w', fetch })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 401,
     });
   });
@@ -383,8 +383,8 @@ describe('joinUrl', () => {
     expect(joinUrl('http://x', '/mcp')).toBe('http://x/mcp');
   });
   it('preserves base path segment', () => {
-    expect(joinUrl('https://gw.example.com/warden', '/mcp')).toBe(
-      'https://gw.example.com/warden/mcp',
+    expect(joinUrl('https://gw.example.com/clavenar', '/mcp')).toBe(
+      'https://gw.example.com/clavenar/mcp',
     );
   });
   it('drops trailing slash on base', () => {

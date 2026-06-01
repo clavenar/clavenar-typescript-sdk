@@ -1,4 +1,4 @@
-// Flat-config ESLint setup for warden-ai-sdk.
+// Flat-config ESLint setup for clavenar-ai-sdk.
 //
 // Composes the standard JS + typescript-eslint recommended rule sets and
 // disables stylistic rules that conflict with Prettier (eslint-config-prettier

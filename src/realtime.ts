@@ -10,12 +10,12 @@
  * of `response.function_call_arguments.delta` events that accumulate
  * a JSON string, followed by exactly one
  * `response.function_call_arguments.done` event carrying the complete
- * arguments. The `done` event is the only one warden inspects — by
+ * arguments. The `done` event is the only one clavenar inspects — by
  * that point the model has committed to the call and we have the full
  * argument payload.
  */
 import { inspectToolUse } from './transport.js';
-import type { NormalizedToolCall, WardenOptions, WardenVerdict } from './types.js';
+import type { NormalizedToolCall, ClavenarOptions, ClavenarVerdict } from './types.js';
 
 /**
  * Terminal event for one Realtime tool call. The accompanying
@@ -68,7 +68,7 @@ export function isRealtimeFunctionCallDone(
  * Normalize a Realtime `function_call_arguments.done` event into the
  * shape `inspectToolUse` accepts. Parses the JSON-encoded `arguments`
  * string; on parse failure the call's `input` lands as the raw string
- * so warden can still inspect the *attempt* — a malformed-args policy
+ * so clavenar can still inspect the *attempt* — a malformed-args policy
  * rule is a legitimate use case and the SDK shouldn't swallow it.
  */
 export function normalizeRealtimeFunctionCall(
@@ -115,7 +115,7 @@ export function normalizeRealtimeFunctionCall(
  */
 export async function inspectRealtimeFunctionCall(
   evt: OpenAIRealtimeFunctionCallDone,
-  opts: WardenOptions,
-): Promise<WardenVerdict> {
+  opts: ClavenarOptions,
+): Promise<ClavenarVerdict> {
   return inspectToolUse(normalizeRealtimeFunctionCall(evt), opts);
 }

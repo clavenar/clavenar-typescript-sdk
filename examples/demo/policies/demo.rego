@@ -1,15 +1,15 @@
-# @vanteguardlabs/warden-ai-sdk demo policy.
+# @vanteguardlabs/clavenar-ai-sdk demo policy.
 #
-# Loaded by warden-lite via `--policies examples/demo/policies`. Same
-# `warden.authz` package as the default governance.rego, so partners
+# Loaded by clavenar-lite via `--policies examples/demo/policies`. Same
+# `clavenar.authz` package as the default governance.rego, so partners
 # can see the canonical "ship your own rules alongside the defaults"
 # pattern. Three rules cover the three tiers:
 #
-#   - delete_user: hard-deny.  → 403, WardenDenied (red).
-#   - transfer_funds: review.  → 202, WardenPending, await resolve() (yellow).
+#   - delete_user: hard-deny.  → 403, ClavenarDenied (red).
+#   - transfer_funds: review.  → 202, ClavenarPending, await resolve() (yellow).
 #   - everything else:         → 200 (green, fetch_user, list_users, …).
 
-package warden.authz
+package clavenar.authz
 
 import rego.v1
 
@@ -24,7 +24,7 @@ deny contains msg if {
 }
 
 # Yellow tier — high-value money moves park for human review. Pairs
-# with WardenPending + await resolve() on the SDK side: the partner's
+# with ClavenarPending + await resolve() on the SDK side: the partner's
 # operator (or, in the demo, the auto-approver in run.ts) flips the
 # pending via POST /pending/{correlation_id}/decide.
 review contains msg if {

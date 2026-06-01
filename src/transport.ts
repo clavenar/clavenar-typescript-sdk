@@ -1,24 +1,24 @@
-import { WardenTransportError } from './errors.js';
+import { ClavenarTransportError } from './errors.js';
 import type {
   NormalizedToolCall,
-  WardenDenyResponse,
-  WardenInspectRequest,
-  WardenOptions,
-  WardenPendingResponse,
-  WardenPendingView,
-  WardenRetryOptions,
-  WardenVerdict,
+  ClavenarDenyResponse,
+  ClavenarInspectRequest,
+  ClavenarOptions,
+  ClavenarPendingResponse,
+  ClavenarPendingView,
+  ClavenarRetryOptions,
+  ClavenarVerdict,
 } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-const DEFAULT_RETRY: WardenRetryOptions = { maxAttempts: 3, baseDelayMs: 100 };
-const CORRELATION_HEADER = 'x-warden-correlation-id';
+const DEFAULT_RETRY: ClavenarRetryOptions = { maxAttempts: 3, baseDelayMs: 100 };
+const CORRELATION_HEADER = 'x-clavenar-correlation-id';
 
 /**
- * Submit one normalized tool call to warden-lite for inspection.
+ * Submit one normalized tool call to clavenar-lite for inspection.
  *
  * Wire contract: `POST {endpoint}/mcp` with a JSON-RPC 2.0 envelope.
- * Server: `warden-lite/src/proxy.rs::handle_mcp`.
+ * Server: `clavenar-lite/src/proxy.rs::handle_mcp`.
  *
  * Provider-agnostic — pass an Anthropic `tool_use` block (already
  * satisfies the shape) or an OpenAI tool call passed through
@@ -28,32 +28,32 @@ const CORRELATION_HEADER = 'x-warden-correlation-id';
  * `opts.retry.maxAttempts` (default 3) with jittered exponential
  * backoff. 200 and 403 are verdicts and never retry. Other 4xx never
  * retry — those are config errors that won't fix themselves. After
- * the final attempt fails, the last {@link WardenTransportError} is
+ * the final attempt fails, the last {@link ClavenarTransportError} is
  * thrown.
  *
- * Correlation: when warden-lite sets `X-Warden-Correlation-Id` on
+ * Correlation: when clavenar-lite sets `X-Clavenar-Correlation-Id` on
  * the response, we surface it on the verdict so callers can look
  * the inspection up in the audit ledger.
  */
 export async function inspectToolUse(
   toolCall: NormalizedToolCall,
-  opts: WardenOptions,
-): Promise<WardenVerdict> {
+  opts: ClavenarOptions,
+): Promise<ClavenarVerdict> {
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
-    throw new WardenTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
+    throw new ClavenarTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
   }
   const retry = opts.retry ?? DEFAULT_RETRY;
   if (retry.maxAttempts < 1) {
-    throw new WardenTransportError(`retry.maxAttempts must be >= 1, got ${retry.maxAttempts}`);
+    throw new ClavenarTransportError(`retry.maxAttempts must be >= 1, got ${retry.maxAttempts}`);
   }
 
-  let lastErr: WardenTransportError | undefined;
+  let lastErr: ClavenarTransportError | undefined;
   for (let attempt = 0; attempt < retry.maxAttempts; attempt++) {
     try {
       return await singleAttempt(toolCall, opts, fetchImpl);
     } catch (e) {
-      if (!(e instanceof WardenTransportError)) throw e;
+      if (!(e instanceof ClavenarTransportError)) throw e;
       lastErr = e;
       if (!isRetriable(e) || attempt === retry.maxAttempts - 1) {
         throw e;
@@ -64,15 +64,15 @@ export async function inspectToolUse(
   // Unreachable — the loop above either returns or throws on the
   // final attempt — but ts can't see that, so satisfy the type
   // checker.
-  throw lastErr ?? new WardenTransportError('warden inspect: no attempts ran');
+  throw lastErr ?? new ClavenarTransportError('clavenar inspect: no attempts ran');
 }
 
 async function singleAttempt(
   toolCall: NormalizedToolCall,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
   fetchImpl: typeof fetch,
-): Promise<WardenVerdict> {
-  const body: WardenInspectRequest = {
+): Promise<ClavenarVerdict> {
+  const body: ClavenarInspectRequest = {
     jsonrpc: '2.0',
     method: 'tools/call',
     params: { name: toolCall.name, arguments: toolCall.input },
@@ -97,9 +97,9 @@ async function singleAttempt(
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     if (e instanceof Error && e.name === 'AbortError') {
-      throw new WardenTransportError(`warden inspect timed out after ${timeoutMs}ms`);
+      throw new ClavenarTransportError(`clavenar inspect timed out after ${timeoutMs}ms`);
     }
-    throw new WardenTransportError(`warden inspect failed: ${reason}`);
+    throw new ClavenarTransportError(`clavenar inspect failed: ${reason}`);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -124,8 +124,8 @@ async function singleAttempt(
     // convenience but the header is authoritative.
     const corr = correlationId ?? payload.correlation_id;
     if (corr === undefined || corr.length === 0) {
-      throw new WardenTransportError(
-        'warden 202 missing correlation id (header and body both empty)',
+      throw new ClavenarTransportError(
+        'clavenar 202 missing correlation id (header and body both empty)',
         202,
       );
     }
@@ -133,27 +133,27 @@ async function singleAttempt(
   }
 
   const text = await safeReadText(response);
-  throw new WardenTransportError(
-    `warden inspect: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
+  throw new ClavenarTransportError(
+    `clavenar inspect: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
     response.status,
   );
 }
 
 /**
  * Single `GET /pending/{correlation_id}` poll. Returns the parsed
- * {@link WardenPendingView}; the caller's polling loop branches on
+ * {@link ClavenarPendingView}; the caller's polling loop branches on
  * `decision`. 404 (pending vanished — operator deleted it, ledger
  * corruption, etc.) and 401 (auth misconfig) are terminal and surface
- * as {@link WardenTransportError}; 5xx and network failures are too —
+ * as {@link ClavenarTransportError}; 5xx and network failures are too —
  * the resolve loop catches and retries those between polls.
  */
 export async function pollPendingOnce(
   correlationId: string,
-  opts: Pick<WardenOptions, 'endpoint' | 'token' | 'timeoutMs' | 'fetch'>,
-): Promise<WardenPendingView> {
+  opts: Pick<ClavenarOptions, 'endpoint' | 'token' | 'timeoutMs' | 'fetch'>,
+): Promise<ClavenarPendingView> {
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
-    throw new WardenTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
+    throw new ClavenarTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
   }
   const headers: Record<string, string> = {};
   if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
@@ -172,9 +172,9 @@ export async function pollPendingOnce(
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     if (e instanceof Error && e.name === 'AbortError') {
-      throw new WardenTransportError(`warden poll timed out after ${timeoutMs}ms`);
+      throw new ClavenarTransportError(`clavenar poll timed out after ${timeoutMs}ms`);
     }
-    throw new WardenTransportError(`warden poll failed: ${reason}`);
+    throw new ClavenarTransportError(`clavenar poll failed: ${reason}`);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -183,13 +183,13 @@ export async function pollPendingOnce(
     return parsePendingViewBody(response);
   }
   const text = await safeReadText(response);
-  throw new WardenTransportError(
-    `warden poll: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
+  throw new ClavenarTransportError(
+    `clavenar poll: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
     response.status,
   );
 }
 
-function isRetriable(e: WardenTransportError): boolean {
+function isRetriable(e: ClavenarTransportError): boolean {
   // No status → fetch itself rejected (DNS, ECONNREFUSED, abort).
   // Retryable. 5xx → server error, retry. Everything else (401, 404,
   // 400) is a config error — retrying won't help.
@@ -210,24 +210,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function parsePendingBody(response: Response): Promise<WardenPendingResponse> {
+async function parsePendingBody(response: Response): Promise<ClavenarPendingResponse> {
   let parsed: unknown;
   try {
     parsed = await response.json();
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    throw new WardenTransportError(`warden 202 with unparseable body: ${reason}`, 202);
+    throw new ClavenarTransportError(`clavenar 202 with unparseable body: ${reason}`, 202);
   }
   if (!isPendingResponse(parsed)) {
-    throw new WardenTransportError(
-      `warden 202 with unexpected body shape: ${JSON.stringify(parsed)}`,
+    throw new ClavenarTransportError(
+      `clavenar 202 with unexpected body shape: ${JSON.stringify(parsed)}`,
       202,
     );
   }
   return parsed;
 }
 
-function isPendingResponse(v: unknown): v is WardenPendingResponse {
+function isPendingResponse(v: unknown): v is ClavenarPendingResponse {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
   return (
@@ -237,24 +237,24 @@ function isPendingResponse(v: unknown): v is WardenPendingResponse {
   );
 }
 
-async function parsePendingViewBody(response: Response): Promise<WardenPendingView> {
+async function parsePendingViewBody(response: Response): Promise<ClavenarPendingView> {
   let parsed: unknown;
   try {
     parsed = await response.json();
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    throw new WardenTransportError(`warden poll with unparseable body: ${reason}`, response.status);
+    throw new ClavenarTransportError(`clavenar poll with unparseable body: ${reason}`, response.status);
   }
   if (!isPendingView(parsed)) {
-    throw new WardenTransportError(
-      `warden poll with unexpected body shape: ${JSON.stringify(parsed)}`,
+    throw new ClavenarTransportError(
+      `clavenar poll with unexpected body shape: ${JSON.stringify(parsed)}`,
       response.status,
     );
   }
   return parsed;
 }
 
-function isPendingView(v: unknown): v is WardenPendingView {
+function isPendingView(v: unknown): v is ClavenarPendingView {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
   const decision = r['decision'];
@@ -271,24 +271,24 @@ function isPendingView(v: unknown): v is WardenPendingView {
   );
 }
 
-async function parseDenyBody(response: Response): Promise<WardenDenyResponse> {
+async function parseDenyBody(response: Response): Promise<ClavenarDenyResponse> {
   let parsed: unknown;
   try {
     parsed = await response.json();
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    throw new WardenTransportError(`warden 403 with unparseable body: ${reason}`, 403);
+    throw new ClavenarTransportError(`clavenar 403 with unparseable body: ${reason}`, 403);
   }
   if (!isDenyResponse(parsed)) {
-    throw new WardenTransportError(
-      `warden 403 with unexpected body shape: ${JSON.stringify(parsed)}`,
+    throw new ClavenarTransportError(
+      `clavenar 403 with unexpected body shape: ${JSON.stringify(parsed)}`,
       403,
     );
   }
   return parsed;
 }
 
-function isDenyResponse(v: unknown): v is WardenDenyResponse {
+function isDenyResponse(v: unknown): v is ClavenarDenyResponse {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
   return (
@@ -313,7 +313,7 @@ async function safeReadText(response: Response): Promise<string> {
  * `joinUrl('http://x', 'mcp')` both yield `http://x/mcp`. We do not
  * use `new URL(path, base)` — its resolution rules drop the base path
  * for absolute-looking paths, which surprises partners who configure
- * an endpoint like `https://gw.example.com/warden`.
+ * an endpoint like `https://gw.example.com/clavenar`.
  */
 export function joinUrl(base: string, path: string): string {
   const b = base.endsWith('/') ? base.slice(0, -1) : base;

@@ -1,14 +1,14 @@
-# OpenAI Realtime + Agent Warden
+# OpenAI Realtime + Clavenar
 
 The Realtime API is websocket-based — there's no `client.method()` for
-`wardenWrap` to intercept. Instead, drain the WS event stream and run
+`clavenarWrap` to intercept. Instead, drain the WS event stream and run
 each `response.function_call_arguments.done` event through
 `inspectRealtimeFunctionCall` before dispatching the tool handler.
 
 ## Run it
 
 ```bash
-npm install ws @vanteguardlabs/warden-ai-sdk
+npm install ws @vanteguardlabs/clavenar-ai-sdk
 node --import tsx run.ts
 ```
 
@@ -21,7 +21,7 @@ node --import tsx run.ts
   `function_call_output` whose `output` is a deny notice. The model
   will see the deny reasons and pick another action.
 - **Pending** — `{ kind: 'pending', correlationId, reviewReasons }`;
-  either block the WS pump on a `wardenctl pending wait` style poll,
+  either block the WS pump on a `clavenarctl pending wait` style poll,
   or send a placeholder `function_call_output` and reconcile when
   the operator decides. Both shapes are valid; pick the one that
   fits your latency budget.
@@ -37,7 +37,7 @@ node --import tsx run.ts
 
 ## See also
 
-- `examples/native-openai/` — the same warden gate against the chat
+- `examples/native-openai/` — the same clavenar gate against the chat
   completions API (wrap-the-client pattern).
 - `examples/vercel-ai/` — generic per-call inspect against any tool
   dispatcher.

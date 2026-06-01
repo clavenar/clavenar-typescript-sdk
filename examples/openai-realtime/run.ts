@@ -1,5 +1,5 @@
 /**
- * OpenAI Realtime + Agent Warden — gate tool calls a voice / streaming
+ * OpenAI Realtime + Clavenar — gate tool calls a voice / streaming
  * agent emits over the Realtime websocket.
  *
  * The Realtime API doesn't fit the wrap-the-client recipe — there's no
@@ -7,12 +7,12 @@
  * over a WebSocket; tool calls are signalled by a sequence of
  * `response.function_call_arguments.delta` events that accumulate a
  * JSON string and exactly one `response.function_call_arguments.done`
- * event carrying the complete arguments. Warden inspects the `done`
+ * event carrying the complete arguments. Clavenar inspects the `done`
  * event — the model has committed by then and the argument payload
  * is whole.
  *
- * This recipe shows the pump pattern with `WardenDenied` /
- * `WardenPending` translation into the Realtime `function_call_output`
+ * This recipe shows the pump pattern with `ClavenarDenied` /
+ * `ClavenarPending` translation into the Realtime `function_call_output`
  * response shape the API expects.
  */
 import {
@@ -22,12 +22,12 @@ import {
 import type {
   OpenAIRealtimeServerEvent,
   OpenAIRealtimeFunctionCallDone,
-  WardenOptions,
+  ClavenarOptions,
 } from '../../src/index.js';
 
-const endpoint = process.env['WARDEN_ENDPOINT'] ?? 'http://localhost:8088';
-const token = process.env['WARDEN_TOKEN'] ?? 'demo-token';
-const opts: WardenOptions = { endpoint, token, mode: 'enforce' };
+const endpoint = process.env['CLAVENAR_ENDPOINT'] ?? 'http://localhost:8088';
+const token = process.env['CLAVENAR_TOKEN'] ?? 'demo-token';
+const opts: ClavenarOptions = { endpoint, token, mode: 'enforce' };
 
 // Tiny WebSocket-like interface so the recipe stays dependency-free.
 // In real wiring, use `import WebSocket from 'ws'` and the
@@ -37,7 +37,7 @@ interface RealtimeLike {
 }
 
 // Stub events: response.output_item.added announces the call, deltas
-// accumulate the args, done is the terminal event warden inspects.
+// accumulate the args, done is the terminal event clavenar inspects.
 const events: OpenAIRealtimeServerEvent[] = [
   { type: 'session.created', session: { id: 'sess_demo' } },
   {
@@ -97,7 +97,7 @@ for (const evt of events) {
         item: {
           type: 'function_call_output',
           call_id: evt.call_id,
-          output: `[warden] denied: ${verdict.payload.reasons.join('; ')}`,
+          output: `[clavenar] denied: ${verdict.payload.reasons.join('; ')}`,
         },
       }),
     );
@@ -115,7 +115,7 @@ for (const evt of events) {
       item: {
         type: 'function_call_output',
         call_id: evt.call_id,
-        output: '[warden] awaiting human approval',
+        output: '[clavenar] awaiting human approval',
       },
     }),
   );

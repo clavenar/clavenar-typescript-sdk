@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Throwaway HTTP echo server for the week-1 demo. warden-lite
+// Throwaway HTTP echo server for the week-1 demo. clavenar-lite
 // forwards allowed requests to whatever --upstream URL it's given;
 // the demo points it here so an allowed tool_use yields a clean
 // 200 rather than a 502 against a dead port.

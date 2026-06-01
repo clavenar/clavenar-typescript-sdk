@@ -8,7 +8,7 @@ import type {
   OpenAIRealtimeFunctionCallDone,
   OpenAIRealtimeServerEvent,
 } from '../src/realtime.js';
-import type { WardenDenyResponse } from '../src/types.js';
+import type { ClavenarDenyResponse } from '../src/types.js';
 
 function fakeResponse(status: number, body?: unknown): Response {
   const init: ResponseInit = { status };
@@ -86,7 +86,7 @@ describe('inspectRealtimeFunctionCall', () => {
   });
 
   it('forwards deny payload on 403', async () => {
-    const denyBody: WardenDenyResponse = {
+    const denyBody: ClavenarDenyResponse = {
       error: 'security_violation',
       reasons: ['policy: wire_transfer requires approval'],
       review_reasons: [],

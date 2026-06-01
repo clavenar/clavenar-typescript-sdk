@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { wardenWrap, WardenConfigError, WardenDenied } from '../src/index.js';
+import { clavenarWrap, ClavenarConfigError, ClavenarDenied } from '../src/index.js';
 import type { OpenAIChatCompletion, OpenAIChatToolCall } from '../src/openai.js';
-import type { WardenVerdict, WardenVerdictContext } from '../src/types.js';
+import type { ClavenarVerdict, ClavenarVerdictContext } from '../src/types.js';
 
 function makeCompletion(toolCalls: OpenAIChatToolCall[] | null): OpenAIChatCompletion {
   return {
@@ -45,12 +45,12 @@ function denyResponse(toolName: string): Response {
   );
 }
 
-describe('wardenWrap (OpenAI client detection)', () => {
+describe('clavenarWrap (OpenAI client detection)', () => {
   it('routes openai-shaped client through chat.completions wrap', async () => {
     const completion = makeCompletion(null);
     const create = vi.fn().mockResolvedValue(completion);
     const fetch = vi.fn();
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch },
     );
@@ -61,17 +61,17 @@ describe('wardenWrap (OpenAI client detection)', () => {
 
   it('rejects a client that has neither shape', () => {
     expect(() =>
-      wardenWrap({ foo: { bar: () => null } } as never, { endpoint: 'http://w' }),
-    ).toThrow(WardenConfigError);
+      clavenarWrap({ foo: { bar: () => null } } as never, { endpoint: 'http://w' }),
+    ).toThrow(ClavenarConfigError);
   });
 });
 
-describe('wardenWrap (OpenAI tool_calls inspection)', () => {
+describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
   it('passes through completions with no tool_calls unchanged', async () => {
     const completion = makeCompletion(null);
     const fetch = vi.fn();
     const create = vi.fn().mockResolvedValue(completion);
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch },
     );
@@ -91,8 +91,8 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
       .mockResolvedValueOnce(denyResponse('delete_user'));
     const create = vi.fn().mockResolvedValue(completion);
 
-    const verdicts: Array<[WardenVerdict, WardenVerdictContext]> = [];
-    const wrapped = wardenWrap(
+    const verdicts: Array<[ClavenarVerdict, ClavenarVerdictContext]> = [];
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       {
         endpoint: 'http://w',
@@ -113,19 +113,19 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
     expect(result).toBe(completion);
   });
 
-  it('enforce mode: first deny throws WardenDenied with parsed payload', async () => {
+  it('enforce mode: first deny throws ClavenarDenied with parsed payload', async () => {
     const completion = makeCompletion([toolCall('call_x', 'drop_table', { table: 'users' })]);
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch },
     );
     try {
       await wrapped.chat.completions.create({});
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      const d = e as WardenDenied;
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      const d = e as ClavenarDenied;
       expect(d.toolName).toBe('drop_table');
       expect(d.reasons).toEqual(['policy: drop_table blocked']);
     }
@@ -140,21 +140,21 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
       .fn()
       .mockResolvedValueOnce(denyResponse('drop_table'))
       .mockResolvedValueOnce(allowResponse());
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch },
     );
     try {
       await wrapped.chat.completions.create({});
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      expect((e as WardenDenied).toolName).toBe('drop_table');
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      expect((e as ClavenarDenied).toolName).toBe('drop_table');
     }
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('rejects an unparseable arguments string with WardenConfigError', async () => {
+  it('rejects an unparseable arguments string with ClavenarConfigError', async () => {
     const completion = makeCompletion([
       {
         id: 'call_bad',
@@ -162,16 +162,16 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
         function: { name: 'fetch_user', arguments: '{not json' },
       },
     ]);
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch: vi.fn() },
     );
-    await expect(wrapped.chat.completions.create({})).rejects.toBeInstanceOf(WardenConfigError);
+    await expect(wrapped.chat.completions.create({})).rejects.toBeInstanceOf(ClavenarConfigError);
   });
 
   it('forwards arbitrary create() args to the upstream client', async () => {
     const create = vi.fn().mockResolvedValue(makeCompletion(null));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch: vi.fn() },
     );
@@ -190,7 +190,7 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
       chat: { completions: { create: vi.fn().mockResolvedValue(makeCompletion(null)) } },
       baseURL: 'https://api.openai.com',
     };
-    const wrapped = wardenWrap(client, { endpoint: 'http://w', fetch: vi.fn() });
+    const wrapped = clavenarWrap(client, { endpoint: 'http://w', fetch: vi.fn() });
     // @ts-expect-error — baseURL isn't on OpenAIChatLike but rides through.
     expect(wrapped.baseURL).toBe('https://api.openai.com');
   });
@@ -224,7 +224,7 @@ describe('wardenWrap (OpenAI tool_calls inspection)', () => {
       .fn()
       .mockResolvedValueOnce(allowResponse())
       .mockResolvedValueOnce(allowResponse());
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch },
     );

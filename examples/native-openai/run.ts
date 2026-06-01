@@ -1,21 +1,21 @@
 /**
- * Native OpenAI + warden — minimal end-to-end recipe.
+ * Native OpenAI + clavenar — minimal end-to-end recipe.
  *
  * Wrap the OpenAI client once at boot; every chat.completions.create
- * that returns tool_calls flows through warden automatically.
+ * that returns tool_calls flows through clavenar automatically.
  *
  * Run with OPENAI_API_KEY set against a real account, or stub the
  * client (commented-out path below) for an offline demo.
  */
-import { wardenWrap, WardenDenied, WardenPending } from '../../src/index.js';
+import { clavenarWrap, ClavenarDenied, ClavenarPending } from '../../src/index.js';
 import type { OpenAIChatLike } from '../../src/index.js';
 
-const endpoint = process.env['WARDEN_ENDPOINT'] ?? 'http://localhost:8088';
-const token = process.env['WARDEN_TOKEN'] ?? 'demo-token';
+const endpoint = process.env['CLAVENAR_ENDPOINT'] ?? 'http://localhost:8088';
+const token = process.env['CLAVENAR_TOKEN'] ?? 'demo-token';
 
 // Real call: `import OpenAI from 'openai'; const openai = new OpenAI();`
 // Stub: keeps the file dependency-free + runnable as a snippet.
-// Typed against `OpenAIChatLike` so wardenWrap's overload picks the
+// Typed against `OpenAIChatLike` so clavenarWrap's overload picks the
 // OpenAI path; structural typing handles the rest.
 const openai: OpenAIChatLike = {
   chat: {
@@ -50,7 +50,7 @@ const openai: OpenAIChatLike = {
   },
 };
 
-const wrapped = wardenWrap(openai, { endpoint, token, mode: 'enforce' });
+const wrapped = clavenarWrap(openai, { endpoint, token, mode: 'enforce' });
 
 try {
   const result = await wrapped.chat.completions.create({
@@ -73,15 +73,15 @@ try {
   });
   console.log('green — model emitted', result.choices[0].message.tool_calls?.length, 'tool call(s)');
 } catch (e) {
-  if (e instanceof WardenDenied) {
+  if (e instanceof ClavenarDenied) {
     console.log(`deny: ${e.reasons.join('; ')}`);
-  } else if (e instanceof WardenPending) {
+  } else if (e instanceof ClavenarPending) {
     console.log(`pending (correlation_id=${e.correlationId}) — awaiting operator`);
     try {
       await e.resolve();
       console.log('resolved: allow');
     } catch (decided) {
-      if (decided instanceof WardenDenied) {
+      if (decided instanceof ClavenarDenied) {
         console.log(`resolved: deny — ${decided.reasons.join('; ')}`);
       } else {
         throw decided;

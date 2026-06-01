@@ -1,25 +1,25 @@
-# `@vanteguardlabs/warden-ai-sdk` examples
+# `@vanteguardlabs/clavenar-ai-sdk` examples
 
-Recipes that show how to drop warden into the canonical agent
+Recipes that show how to drop clavenar into the canonical agent
 frameworks. Each subdirectory is self-contained: a `run.ts` you can
-execute against a running `warden-lite`, and a `README.md` that
+execute against a running `clavenar-lite`, and a `README.md` that
 points at the load-bearing pattern in 30 seconds.
 
 | Directory | What it demonstrates |
 |---|---|
 | [`demo/`](./demo) | Full three-tier walkthrough (green / red / yellow) with a mocked Anthropic client. Recorded as `demo.gif`. |
-| [`native-anthropic/`](./native-anthropic) | Wrap an `@anthropic-ai/sdk` client directly with `wardenWrap`. Canonical minimal pattern. |
+| [`native-anthropic/`](./native-anthropic) | Wrap an `@anthropic-ai/sdk` client directly with `clavenarWrap`. Canonical minimal pattern. |
 | [`native-openai/`](./native-openai) | Same shape against the `openai` SDK's `chat.completions.create`. |
 | [`vercel-ai/`](./vercel-ai) | Intercept Vercel AI SDK's `toolCalls` array via `inspectToolUse` before dispatching. |
-| [`mastra/`](./mastra) | `withWardenGate(name, execute)` helper that wraps any Mastra tool's `execute` function. |
-| [`langchain-js/`](./langchain-js) | `wardenTool(name, description, func)` factory for LangChain DynamicTool registration. |
-| [`anthropic-computer-use/`](./anthropic-computer-use) | Wrap an Anthropic client that uses `computer` / `bash` / `str_replace_editor` tools. Same `wardenWrap` pattern; the policy snippet shows how to gate destructive actions. |
+| [`mastra/`](./mastra) | `withClavenarGate(name, execute)` helper that wraps any Mastra tool's `execute` function. |
+| [`langchain-js/`](./langchain-js) | `clavenarTool(name, description, func)` factory for LangChain DynamicTool registration. |
+| [`anthropic-computer-use/`](./anthropic-computer-use) | Wrap an Anthropic client that uses `computer` / `bash` / `str_replace_editor` tools. Same `clavenarWrap` pattern; the policy snippet shows how to gate destructive actions. |
 | [`openai-realtime/`](./openai-realtime) | Inspect tool calls a Realtime websocket emits. `isRealtimeFunctionCallDone` + `inspectRealtimeFunctionCall` plug into your WS message pump. |
 
 Python equivalents (using
-[`warden-ai`](https://pypi.org/project/warden-ai) instead of this
+[`clavenar-ai`](https://pypi.org/project/clavenar-ai) instead of this
 TypeScript SDK) live in
-[`warden-ai-py/examples/`](../../warden-ai-py/examples):
+[`clavenar-ai-py/examples/`](../../clavenar-ai-py/examples):
 
 - `basic_anthropic.py`, `sync_openai.py`, `streaming_anthropic.py`
 - `langchain_recipe.py`
@@ -27,7 +27,7 @@ TypeScript SDK) live in
 
 ## The integration spectrum
 
-Every recipe ends up at the same end state: warden inspects every
+Every recipe ends up at the same end state: clavenar inspects every
 tool call before your handler runs. They differ in where the wrap
 goes:
 
@@ -39,6 +39,6 @@ goes:
    boundary. Best fit when the framework owns the model call and you
    only see post-generation tool dispatch.
 
-The wire contract (`POST /mcp` to `warden-lite`) is identical in
+The wire contract (`POST /mcp` to `clavenar-lite`) is identical in
 both shapes — the SDK chooses the integration point based on what
 the framework exposes.

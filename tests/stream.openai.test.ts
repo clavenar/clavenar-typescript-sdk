@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { wardenWrap, WardenDenied, WardenConfigError } from '../src/index.js';
+import { clavenarWrap, ClavenarDenied, ClavenarConfigError } from '../src/index.js';
 import type { OpenAIChatCompletionChunk } from '../src/openai.js';
-import type { WardenVerdict } from '../src/types.js';
+import type { ClavenarVerdict } from '../src/types.js';
 
 function allowResponse(): Response {
   return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -90,12 +90,12 @@ function toolCallChunks(
   ];
 }
 
-describe('wardenWrap (OpenAI streaming)', () => {
+describe('clavenarWrap (OpenAI streaming)', () => {
   it('allow: forwards every chunk in order', async () => {
     const chunks = toolCallChunks('call_a', 'fetch_user', { id: 1 });
     const fetch = vi.fn().mockResolvedValue(allowResponse());
     const create = vi.fn().mockResolvedValue(fromArray(chunks));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch },
     );
@@ -110,7 +110,7 @@ describe('wardenWrap (OpenAI streaming)', () => {
     const chunks = toolCallChunks('call_x', 'drop_table', { table: 'users' });
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
     const create = vi.fn().mockResolvedValue(fromArray(chunks));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch },
     );
@@ -118,10 +118,10 @@ describe('wardenWrap (OpenAI streaming)', () => {
     const collected: OpenAIChatCompletionChunk[] = [];
     try {
       for await (const c of stream) collected.push(c);
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      expect((e as WardenDenied).toolName).toBe('drop_table');
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      expect((e as ClavenarDenied).toolName).toBe('drop_table');
     }
     // Partner saw the two accumulation chunks but never the
     // finish_reason='tool_calls' chunk that would unlock execution.
@@ -132,9 +132,9 @@ describe('wardenWrap (OpenAI streaming)', () => {
   it('observe + deny: every chunk passes through, onVerdict fires, no throw', async () => {
     const chunks = toolCallChunks('call_x', 'drop_table', {});
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
-    const verdicts: WardenVerdict[] = [];
+    const verdicts: ClavenarVerdict[] = [];
     const create = vi.fn().mockResolvedValue(fromArray(chunks));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       {
         endpoint: 'http://w',
@@ -178,7 +178,7 @@ describe('wardenWrap (OpenAI streaming)', () => {
     ];
     const fetch = vi.fn().mockResolvedValue(allowResponse());
     const create = vi.fn().mockResolvedValue(fromArray(chunks));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch },
     );
@@ -187,7 +187,7 @@ describe('wardenWrap (OpenAI streaming)', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('rejects unparseable streamed arguments with WardenConfigError', async () => {
+  it('rejects unparseable streamed arguments with ClavenarConfigError', async () => {
     const chunks: OpenAIChatCompletionChunk[] = [
       {
         id: 'c1',
@@ -211,12 +211,12 @@ describe('wardenWrap (OpenAI streaming)', () => {
       },
     ];
     const create = vi.fn().mockResolvedValue(fromArray(chunks));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch: vi.fn() },
     );
     const stream = (await wrapped.chat.completions.create({ stream: true })) as AsyncIterable<OpenAIChatCompletionChunk>;
-    await expect(collect(stream)).rejects.toBeInstanceOf(WardenConfigError);
+    await expect(collect(stream)).rejects.toBeInstanceOf(ClavenarConfigError);
   });
 
   it('plain text streams (no tool_calls) pass through without inspection', async () => {
@@ -234,7 +234,7 @@ describe('wardenWrap (OpenAI streaming)', () => {
     ];
     const fetch = vi.fn();
     const create = vi.fn().mockResolvedValue(fromArray(chunks));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { chat: { completions: { create } } },
       { endpoint: 'http://w', fetch },
     );

@@ -1,24 +1,24 @@
 /**
- * Week-1 demo: prove the wrap works end-to-end against warden-lite.
+ * Week-1 demo: prove the wrap works end-to-end against clavenar-lite.
  *
  * Mocks the Anthropic client (canned messages with tool_use blocks)
  * so this runs without an Anthropic API key — the artifact under
- * test is warden's behavior, not Anthropic's.
+ * test is clavenar's behavior, not Anthropic's.
  *
- * Assumes warden-lite is reachable. Use ./start.sh to boot it +
+ * Assumes clavenar-lite is reachable. Use ./start.sh to boot it +
  * run this script, or hand-start with:
  *
- *   warden-lite start --port 8088 --policies examples/demo/policies \
+ *   clavenar-lite start --port 8088 --policies examples/demo/policies \
  *     --ledger :memory: --upstream http://127.0.0.1:9 \
  *     --token demo-token
  */
 import { spawn } from 'node:child_process';
-import { WardenDenied, WardenPending, wardenWrap } from '../../src/index.js';
+import { ClavenarDenied, ClavenarPending, clavenarWrap } from '../../src/index.js';
 import type { AnthropicMessage } from '../../src/anthropic.js';
-import type { WardenVerdict, WardenVerdictContext } from '../../src/types.js';
+import type { ClavenarVerdict, ClavenarVerdictContext } from '../../src/types.js';
 
-const endpoint = process.env['WARDEN_ENDPOINT'] ?? 'http://localhost:8088';
-const token = process.env['WARDEN_TOKEN'] ?? 'demo-token';
+const endpoint = process.env['CLAVENAR_ENDPOINT'] ?? 'http://localhost:8088';
+const token = process.env['CLAVENAR_TOKEN'] ?? 'demo-token';
 // OBSERVE=1 flips the SDK to observe mode: deny verdicts surface via
 // the onVerdict callback but never throw. Useful for showing the
 // rollout pattern partners follow before flipping to enforce.
@@ -26,10 +26,10 @@ const mode: 'enforce' | 'observe' =
   process.env['OBSERVE'] === '1' || process.env['OBSERVE'] === 'true'
     ? 'observe'
     : 'enforce';
-// WARDEN_DEMO_PAUSE_MS adds a per-scenario reading pause — used when
+// CLAVENAR_DEMO_PAUSE_MS adds a per-scenario reading pause — used when
 // recording the outreach screencap so viewers can absorb each verdict
 // before the next one prints. Default 0: no effect on normal `pnpm demo`.
-const pauseMs = Number(process.env['WARDEN_DEMO_PAUSE_MS'] ?? '0');
+const pauseMs = Number(process.env['CLAVENAR_DEMO_PAUSE_MS'] ?? '0');
 
 const scenarios: Array<{ label: string; message: AnthropicMessage }> = [
   {
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, pauseMs));
   }
   console.log('');
-  console.log('Demo complete. Ledger entries are visible in warden-lite stdout.');
+  console.log('Demo complete. Ledger entries are visible in clavenar-lite stdout.');
 }
 
 async function runScenario(
@@ -90,13 +90,13 @@ async function runScenario(
     console.log(`        tool_use: ${toolBlock.name}(${JSON.stringify(toolBlock.input)})`);
   }
 
-  const wrapped = wardenWrap(
+  const wrapped = clavenarWrap(
     { messages: { create: async () => message } },
     {
       endpoint,
       token,
       mode,
-      onVerdict: (v: WardenVerdict, ctx: WardenVerdictContext) => printVerdict(v, ctx),
+      onVerdict: (v: ClavenarVerdict, ctx: ClavenarVerdictContext) => printVerdict(v, ctx),
     },
   );
 
@@ -104,13 +104,13 @@ async function runScenario(
     await wrapped.messages.create({});
     if (mode === 'observe') {
       console.log(
-        '        result:   message returned (observe: warden recorded the verdict, partner code keeps running)',
+        '        result:   message returned (observe: clavenar recorded the verdict, partner code keeps running)',
       );
     } else {
       console.log('        result:   message returned, your tool-execution loop runs the tool');
     }
   } catch (e) {
-    if (e instanceof WardenPending) {
+    if (e instanceof ClavenarPending) {
       // onVerdict already printed the [PEND] header — pick up from
       // the review reason and the await.
       console.log(`                  reason: ${e.reviewReasons[0] ?? '(no review reason)'}`);
@@ -125,16 +125,16 @@ async function runScenario(
         await e.resolve({ pollIntervalMs: 250, timeoutMs: 15_000 });
         console.log(`        result:   approved — agent loop proceeds with the tool call`);
       } catch (rerr) {
-        if (rerr instanceof WardenDenied) {
-          console.log(`        result:   denied by operator — WardenDenied thrown out of resolve()`);
+        if (rerr instanceof ClavenarDenied) {
+          console.log(`        result:   denied by operator — ClavenarDenied thrown out of resolve()`);
           console.log(`                  reasons: ${rerr.reasons.join(' | ')}`);
         } else {
           console.log(`        result:   resolve failed: ${(rerr as Error).message}`);
           process.exitCode = 1;
         }
       }
-    } else if (e instanceof WardenDenied) {
-      console.log(`        result:   WardenDenied thrown — your existing throw-handler kicks in`);
+    } else if (e instanceof ClavenarDenied) {
+      console.log(`        result:   ClavenarDenied thrown — your existing throw-handler kicks in`);
       console.log(`                  toolName=${e.toolName}`);
       console.log(`                  intentCategory=${e.intentCategory}`);
       for (const reason of e.reasons) {
@@ -150,15 +150,15 @@ async function runScenario(
 
 // Auto-approve the parked tool call. In production this is a human
 // click in Slack or a dashboard; the demo shells out to the canonical
-// operator command — `warden-lite pending decide` — so viewers see
+// operator command — `clavenar-lite pending decide` — so viewers see
 // the exact command a partner would run. We could POST to /decide
 // directly (the SDK side wouldn't care), but the CLI is the partner-
 // facing surface and demos should match that.
 async function scheduleAutoApprove(correlationId: string, delayMs: number): Promise<void> {
   await new Promise((r) => setTimeout(r, delayMs));
-  const bin = process.env['WARDEN_LITE_BIN'] ?? 'warden-lite';
+  const bin = process.env['CLAVENAR_LITE_BIN'] ?? 'clavenar-lite';
   // Pass --endpoint explicitly to the subprocess so the demo works
-  // even when WARDEN_LITE_URL isn't exported in the operator's shell,
+  // even when CLAVENAR_LITE_URL isn't exported in the operator's shell,
   // but DON'T print it — it equals the default (http://localhost:8088)
   // and the printed line is for screencap legibility, not literal
   // reproduction. The truthful version stays in the README.
@@ -173,7 +173,7 @@ async function scheduleAutoApprove(correlationId: string, delayMs: number): Prom
     'demo auto-approve',
   ];
   console.log(
-    `        operator: $ warden-lite pending decide ${correlationId} --allow --note 'demo auto-approve'`,
+    `        operator: $ clavenar-lite pending decide ${correlationId} --allow --note 'demo auto-approve'`,
   );
   await new Promise<void>((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -189,35 +189,35 @@ async function scheduleAutoApprove(correlationId: string, delayMs: number): Prom
     child.on('error', reject);
     child.on('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`warden-lite pending decide exited ${code}: ${stderr}`));
+      else reject(new Error(`clavenar-lite pending decide exited ${code}: ${stderr}`));
     });
   });
 }
 
-function printVerdict(v: WardenVerdict, ctx: WardenVerdictContext): void {
+function printVerdict(v: ClavenarVerdict, ctx: ClavenarVerdictContext): void {
   if (v.kind === 'allow') {
-    console.log(`        warden:   [ALLOW] tool="${ctx.toolName}"`);
+    console.log(`        clavenar:   [ALLOW] tool="${ctx.toolName}"`);
   } else if (v.kind === 'deny') {
     console.log(
-      `        warden:   [DENY]  tool="${ctx.toolName}" intent="${v.payload.intent_category}"`,
+      `        clavenar:   [DENY]  tool="${ctx.toolName}" intent="${v.payload.intent_category}"`,
     );
   } else {
-    console.log(`        warden:   [PEND]  tool="${ctx.toolName}" corr="${v.correlationId}"`);
+    console.log(`        clavenar:   [PEND]  tool="${ctx.toolName}" corr="${v.correlationId}"`);
   }
 }
 
 function banner(): void {
-  console.log('Agent Warden SDK — demo');
+  console.log('Clavenar SDK — demo');
   console.log(`  endpoint: ${endpoint}`);
   console.log(`  token:    ${token ? '*****' + token.slice(-4) : '(none)'}`);
   console.log(`  mode:     ${mode}`);
   console.log(`  client:   mocked Anthropic (canned tool_use blocks)`);
   console.log('');
   if (mode === 'enforce') {
-    console.log('enforce mode: a deny verdict throws WardenDenied to the caller; the');
+    console.log('enforce mode: a deny verdict throws ClavenarDenied to the caller; the');
     console.log("partner's tool-execution loop never sees the denied tool.");
   } else {
-    console.log('observe mode: warden records every verdict via onVerdict but never');
+    console.log('observe mode: clavenar records every verdict via onVerdict but never');
     console.log('throws. Use this during rollout, flip to enforce when the verdicts');
     console.log('are trustworthy. Re-run with `OBSERVE= pnpm demo` to see enforce mode.');
   }

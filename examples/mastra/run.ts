@@ -1,17 +1,17 @@
 /**
- * Mastra + warden recipe — gate every tool execute with warden
+ * Mastra + clavenar recipe — gate every tool execute with clavenar
  * before running it.
  *
  * The Mastra agent itself is stubbed; the load-bearing pattern is
- * the `withWardenGate(name, execute)` helper that wraps any
- * Mastra-shaped tool `execute` function with a warden inspect call.
+ * the `withClavenarGate(name, execute)` helper that wraps any
+ * Mastra-shaped tool `execute` function with a clavenar inspect call.
  * Drop the helper into your real Mastra `tools` registration and
  * you're done.
  */
-import { WardenDenied, WardenPending, inspectToolUse } from '../../src/index.js';
+import { ClavenarDenied, ClavenarPending, inspectToolUse } from '../../src/index.js';
 
-const endpoint = process.env['WARDEN_ENDPOINT'] ?? 'http://localhost:8088';
-const token = process.env['WARDEN_TOKEN'] ?? 'demo-token';
+const endpoint = process.env['CLAVENAR_ENDPOINT'] ?? 'http://localhost:8088';
+const token = process.env['CLAVENAR_TOKEN'] ?? 'demo-token';
 
 /** Mastra tool registration shape (subset). */
 type MastraTool<TArgs, TResult> = {
@@ -21,7 +21,7 @@ type MastraTool<TArgs, TResult> = {
 };
 
 /**
- * Wrap a tool's `execute` with warden inspection. Returns a new
+ * Wrap a tool's `execute` with clavenar inspection. Returns a new
  * execute function with the same signature — Mastra sees a regular
  * tool, but every call routes through the proxy first.
  *
@@ -29,7 +29,7 @@ type MastraTool<TArgs, TResult> = {
  * of the tool execution and bubble back up through the Mastra
  * agent's error path.
  */
-function withWardenGate<TArgs, TResult>(
+function withClavenarGate<TArgs, TResult>(
   toolName: string,
   inner: (args: TArgs) => Promise<TResult>
 ): (args: TArgs) => Promise<TResult> {
@@ -40,19 +40,19 @@ function withWardenGate<TArgs, TResult>(
         { endpoint, token, mode: 'enforce' }
       );
     } catch (e) {
-      if (e instanceof WardenPending) {
+      if (e instanceof ClavenarPending) {
         try {
           await e.resolve();
           // Approved — fall through to inner.
         } catch (decided) {
-          if (decided instanceof WardenDenied) {
+          if (decided instanceof ClavenarDenied) {
             throw new Error(
               `Mastra tool ${toolName} denied by operator: ${decided.reasons.join('; ')}`
             );
           }
           throw decided;
         }
-      } else if (e instanceof WardenDenied) {
+      } else if (e instanceof ClavenarDenied) {
         throw new Error(`Mastra tool ${toolName} denied: ${e.reasons.join('; ')}`);
       } else {
         throw e;
@@ -72,7 +72,7 @@ const tools: Record<string, MastraTool<unknown, unknown>> = {
   fetch_user: {
     description: 'Fetch a user record by id.',
     parameters: { type: 'object', properties: { userId: { type: 'string' } } },
-    execute: withWardenGate('fetch_user', async (args) => {
+    execute: withClavenarGate('fetch_user', async (args) => {
       const { userId } = args as { userId: string };
       return { userId, name: `user-${userId}` };
     }),
@@ -83,7 +83,7 @@ const tools: Record<string, MastraTool<unknown, unknown>> = {
       type: 'object',
       properties: { to: { type: 'string' }, amount: { type: 'number' } },
     },
-    execute: withWardenGate('wire_transfer', async () => ({ ok: true })),
+    execute: withClavenarGate('wire_transfer', async () => ({ ok: true })),
   },
 };
 

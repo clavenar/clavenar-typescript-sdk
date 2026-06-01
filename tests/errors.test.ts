@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WardenDenied, WardenPending, WardenTransportError } from '../src/errors.js';
-import type { WardenPendingView } from '../src/types.js';
+import { ClavenarDenied, ClavenarPending, ClavenarTransportError } from '../src/errors.js';
+import type { ClavenarPendingView } from '../src/types.js';
 
 function view(
   decision: 'allow' | 'deny' | null,
   deciderNote: string | null = null,
-): WardenPendingView {
+): ClavenarPendingView {
   return {
     correlation_id: 'corr_x',
     agent_id: 'agent-1',
@@ -19,8 +19,8 @@ function view(
   };
 }
 
-function pending(pollOnce: () => Promise<WardenPendingView>): WardenPending {
-  return new WardenPending({
+function pending(pollOnce: () => Promise<ClavenarPendingView>): ClavenarPending {
+  return new ClavenarPending({
     toolName: 'wire_transfer',
     correlationId: 'corr_x',
     reviewReasons: ['Review: Wire transfers require human approval before execution.'],
@@ -28,7 +28,7 @@ function pending(pollOnce: () => Promise<WardenPendingView>): WardenPending {
   });
 }
 
-describe('WardenPending.resolve', () => {
+describe('ClavenarPending.resolve', () => {
   it('returns void on allow without polling more than needed', async () => {
     const pollOnce = vi.fn().mockResolvedValueOnce(view('allow', 'ok by sec'));
     const p = pending(pollOnce);
@@ -47,15 +47,15 @@ describe('WardenPending.resolve', () => {
     expect(pollOnce).toHaveBeenCalledTimes(3);
   });
 
-  it('throws WardenDenied on a deny decision with the decider note as the reason', async () => {
+  it('throws ClavenarDenied on a deny decision with the decider note as the reason', async () => {
     const pollOnce = vi.fn().mockResolvedValueOnce(view('deny', 'too risky'));
     const p = pending(pollOnce);
     try {
       await p.resolve({ pollIntervalMs: 1, timeoutMs: 100 });
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      const d = e as WardenDenied;
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      const d = e as ClavenarDenied;
       expect(d.toolName).toBe('wire_transfer');
       expect(d.intentCategory).toBe('PendingDenied');
       expect(d.reasons).toEqual(['too risky']);
@@ -71,24 +71,24 @@ describe('WardenPending.resolve', () => {
     const p = pending(pollOnce);
     try {
       await p.resolve({ pollIntervalMs: 1, timeoutMs: 100 });
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect((e as WardenDenied).reasons).toEqual(['operator denied']);
+      expect((e as ClavenarDenied).reasons).toEqual(['operator denied']);
     }
   });
 
-  it('throws WardenTransportError after timeout when decision never lands', async () => {
+  it('throws ClavenarTransportError after timeout when decision never lands', async () => {
     const pollOnce = vi.fn().mockResolvedValue(view(null));
     const p = pending(pollOnce);
     await expect(p.resolve({ pollIntervalMs: 5, timeoutMs: 30 })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
     });
     // Should have polled at least once but timed out before flipping.
     expect(pollOnce).toHaveBeenCalled();
   });
 
   it('swallows transient 5xx between polls and continues', async () => {
-    const transient = new WardenTransportError('upstream blip', 503);
+    const transient = new ClavenarTransportError('upstream blip', 503);
     const pollOnce = vi
       .fn()
       .mockRejectedValueOnce(transient)
@@ -99,21 +99,21 @@ describe('WardenPending.resolve', () => {
   });
 
   it('surfaces a 404 from polling immediately (pending vanished)', async () => {
-    const fatal = new WardenTransportError('no such pending', 404);
+    const fatal = new ClavenarTransportError('no such pending', 404);
     const pollOnce = vi.fn().mockRejectedValueOnce(fatal);
     const p = pending(pollOnce);
     await expect(p.resolve({ pollIntervalMs: 1, timeoutMs: 500 })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 404,
     });
   });
 
   it('surfaces a 401 from polling immediately (auth misconfig)', async () => {
-    const fatal = new WardenTransportError('bad token', 401);
+    const fatal = new ClavenarTransportError('bad token', 401);
     const pollOnce = vi.fn().mockRejectedValueOnce(fatal);
     const p = pending(pollOnce);
     await expect(p.resolve({ pollIntervalMs: 1, timeoutMs: 500 })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 401,
     });
   });
@@ -121,14 +121,14 @@ describe('WardenPending.resolve', () => {
   it('rejects zero/negative pollIntervalMs eagerly', async () => {
     const p = pending(vi.fn());
     await expect(p.resolve({ pollIntervalMs: 0, timeoutMs: 100 })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
     });
   });
 
   it('rejects zero/negative timeoutMs eagerly', async () => {
     const p = pending(vi.fn());
     await expect(p.resolve({ pollIntervalMs: 10, timeoutMs: 0 })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
     });
   });
 });

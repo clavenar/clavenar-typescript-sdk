@@ -1,33 +1,33 @@
 /**
- * Real round-trip against a running warden-lite. Skipped unless
- * `WARDEN_E2E_ENDPOINT` is set so this stays out of the default
- * vitest run (CI can spin warden-lite up and toggle the env).
+ * Real round-trip against a running clavenar-lite. Skipped unless
+ * `CLAVENAR_E2E_ENDPOINT` is set so this stays out of the default
+ * vitest run (CI can spin clavenar-lite up and toggle the env).
  *
- *   warden-lite start --port 8088 --policies ./policies \
+ *   clavenar-lite start --port 8088 --policies ./policies \
  *     --ledger :memory: --upstream http://127.0.0.1:9 \
  *     --token smoke-test-token
- *   WARDEN_E2E_ENDPOINT=http://localhost:8088 \
- *     WARDEN_E2E_TOKEN=smoke-test-token \
+ *   CLAVENAR_E2E_ENDPOINT=http://localhost:8088 \
+ *     CLAVENAR_E2E_TOKEN=smoke-test-token \
  *     pnpm test
  */
 import { describe, expect, it } from 'vitest';
 import {
   inspectToolUse,
-  wardenWrap,
-  WardenDenied,
-  WardenPending,
+  clavenarWrap,
+  ClavenarDenied,
+  ClavenarPending,
 } from '../src/index.js';
 import type { AnthropicMessage, AnthropicToolUseBlock } from '../src/anthropic.js';
-import type { WardenVerdict } from '../src/types.js';
+import type { ClavenarVerdict } from '../src/types.js';
 
-const endpoint = process.env['WARDEN_E2E_ENDPOINT'];
-const token = process.env['WARDEN_E2E_TOKEN'];
-const decideToken = process.env['WARDEN_E2E_DECIDE_TOKEN'];
+const endpoint = process.env['CLAVENAR_E2E_ENDPOINT'];
+const token = process.env['CLAVENAR_E2E_TOKEN'];
+const decideToken = process.env['CLAVENAR_E2E_DECIDE_TOKEN'];
 const enabled = typeof endpoint === 'string' && endpoint.length > 0;
 
 const maybeDescribe = enabled ? describe : describe.skip;
 
-maybeDescribe('e2e against warden-lite', () => {
+maybeDescribe('e2e against clavenar-lite', () => {
   const opts = { endpoint: endpoint!, token };
 
   it('inspectToolUse: sql_execute → deny', async () => {
@@ -57,7 +57,7 @@ maybeDescribe('e2e against warden-lite', () => {
     expect(verdict.kind).toBe('deny');
   });
 
-  it('wardenWrap enforce (default): denied tool_use → throws WardenDenied', async () => {
+  it('clavenarWrap enforce (default): denied tool_use → throws ClavenarDenied', async () => {
     const message: AnthropicMessage = {
       id: 'msg_e2e_1',
       type: 'message',
@@ -68,8 +68,8 @@ maybeDescribe('e2e against warden-lite', () => {
       ],
       stop_reason: 'tool_use',
     };
-    const verdicts: WardenVerdict[] = [];
-    const wrapped = wardenWrap(
+    const verdicts: ClavenarVerdict[] = [];
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       {
         ...opts,
@@ -80,10 +80,10 @@ maybeDescribe('e2e against warden-lite', () => {
     );
     try {
       await wrapped.messages.create({});
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      const denied = e as WardenDenied;
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      const denied = e as ClavenarDenied;
       expect(denied.toolName).toBe('sql_execute');
       expect(denied.intentCategory).toBe('DangerousTool');
     }
@@ -91,7 +91,7 @@ maybeDescribe('e2e against warden-lite', () => {
     expect(verdicts[0]?.kind).toBe('deny');
   });
 
-  it('wardenWrap observe: denied tool_use → passes through, onVerdict fires', async () => {
+  it('clavenarWrap observe: denied tool_use → passes through, onVerdict fires', async () => {
     const message: AnthropicMessage = {
       id: 'msg_e2e_2',
       type: 'message',
@@ -101,8 +101,8 @@ maybeDescribe('e2e against warden-lite', () => {
       ],
       stop_reason: 'tool_use',
     };
-    const verdicts: WardenVerdict[] = [];
-    const wrapped = wardenWrap(
+    const verdicts: ClavenarVerdict[] = [];
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       {
         ...opts,
@@ -118,7 +118,7 @@ maybeDescribe('e2e against warden-lite', () => {
     expect(verdicts[0]?.kind).toBe('deny');
   });
 
-  it('rejects wrong bearer token with WardenTransportError', async () => {
+  it('rejects wrong bearer token with ClavenarTransportError', async () => {
     const block: AnthropicToolUseBlock = {
       type: 'tool_use',
       id: 'toolu_e2e_badauth',
@@ -126,12 +126,12 @@ maybeDescribe('e2e against warden-lite', () => {
       input: {},
     };
     await expect(inspectToolUse(block, { ...opts, token: 'wrong-token' })).rejects.toMatchObject({
-      name: 'WardenTransportError',
+      name: 'ClavenarTransportError',
       status: 401,
     });
   });
 
-  // Operator-side helper. Hits warden-lite's /decide directly rather
+  // Operator-side helper. Hits clavenar-lite's /decide directly rather
   // than shelling out to the CLI so the test doesn't depend on the
   // binary being on PATH. The wire contract is what matters here.
   async function operatorDecide(
@@ -176,13 +176,13 @@ maybeDescribe('e2e against warden-lite', () => {
     const stub = {
       messages: { create: async () => makeWireTransferMessage('msg_e2e_pend_allow') },
     };
-    const wrapped = wardenWrap(stub, opts);
+    const wrapped = clavenarWrap(stub, opts);
 
-    let pending: WardenPending | undefined;
+    let pending: ClavenarPending | undefined;
     try {
       await wrapped.messages.create({});
     } catch (e) {
-      if (e instanceof WardenPending) pending = e;
+      if (e instanceof ClavenarPending) pending = e;
       else throw e;
     }
     expect(pending).toBeDefined();
@@ -196,21 +196,21 @@ maybeDescribe('e2e against warden-lite', () => {
     }, 100);
     await pending!.resolve({ pollIntervalMs: 50, timeoutMs: 5_000 });
     // No throw == allow. The point of this test is the round-trip:
-    // a real warden-lite parked the call, /decide updated the row, and
+    // a real clavenar-lite parked the call, /decide updated the row, and
     // the SDK's poll loop saw the flip.
   });
 
-  it('yellow tier: wire_transfer parks; operator denies; resolve throws WardenDenied', async () => {
+  it('yellow tier: wire_transfer parks; operator denies; resolve throws ClavenarDenied', async () => {
     const stub = {
       messages: { create: async () => makeWireTransferMessage('msg_e2e_pend_deny') },
     };
-    const wrapped = wardenWrap(stub, opts);
+    const wrapped = clavenarWrap(stub, opts);
 
-    let pending: WardenPending | undefined;
+    let pending: ClavenarPending | undefined;
     try {
       await wrapped.messages.create({});
     } catch (e) {
-      if (e instanceof WardenPending) pending = e;
+      if (e instanceof ClavenarPending) pending = e;
       else throw e;
     }
     expect(pending).toBeDefined();
@@ -220,6 +220,6 @@ maybeDescribe('e2e against warden-lite', () => {
     }, 100);
     await expect(
       pending!.resolve({ pollIntervalMs: 50, timeoutMs: 5_000 }),
-    ).rejects.toBeInstanceOf(WardenDenied);
+    ).rejects.toBeInstanceOf(ClavenarDenied);
   });
 });

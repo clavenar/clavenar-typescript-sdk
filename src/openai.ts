@@ -12,7 +12,7 @@
  * normalizer rather than overloading this one.
  */
 
-import { WardenConfigError } from './errors.js';
+import { ClavenarConfigError } from './errors.js';
 import type { NormalizedToolCall } from './types.js';
 
 export interface OpenAIChatToolCall {
@@ -72,10 +72,10 @@ export function isOpenAIChatToolCall(v: unknown): v is OpenAIChatToolCall {
 
 /**
  * Parse the OpenAI tool call's JSON-encoded `arguments` and surface a
- * {@link NormalizedToolCall}. Throws {@link WardenConfigError} when
+ * {@link NormalizedToolCall}. Throws {@link ClavenarConfigError} when
  * the upstream model emits a tool call whose `arguments` field isn't
  * valid JSON — that's a contract violation by the model, not
- * something warden can usefully forward to policy.
+ * something clavenar can usefully forward to policy.
  */
 export function normalizeChatToolCall(call: OpenAIChatToolCall): NormalizedToolCall {
   let input: unknown;
@@ -83,7 +83,7 @@ export function normalizeChatToolCall(call: OpenAIChatToolCall): NormalizedToolC
     input = JSON.parse(call.function.arguments);
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    throw new WardenConfigError(
+    throw new ClavenarConfigError(
       `OpenAI tool_call ${call.id} (${call.function.name}) had unparseable arguments: ${reason}`,
     );
   }

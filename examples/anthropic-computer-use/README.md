@@ -1,15 +1,15 @@
-# Anthropic Computer Use + Agent Warden
+# Anthropic Computer Use + Clavenar
 
 Computer Use ships three high-blast-radius tools — `computer`, `bash`,
 and `str_replace_editor` — that can drive a real workstation. The
-`wardenWrap` recipe is unchanged: every action lands as a normal
+`clavenarWrap` recipe is unchanged: every action lands as a normal
 `tool_use` block, so wrap-the-client gates each one before it
 executes.
 
 ## Run it
 
 ```bash
-npm install @anthropic-ai/sdk @vanteguardlabs/warden-ai-sdk
+npm install @anthropic-ai/sdk @vanteguardlabs/clavenar-ai-sdk
 ANTHROPIC_API_KEY=sk-ant-... node --import tsx run.ts
 ```
 
@@ -20,7 +20,7 @@ A starting point that denies destructive `bash` commands and prod
 file edits:
 
 ```rego
-package warden.authz
+package clavenar.authz
 import rego.v1
 
 # Block destructive bash invocations outright.
@@ -47,9 +47,9 @@ so the deny path is visible at first run.
 
 - Green — allowed; the Anthropic response passes through, your handler
   dispatches the action.
-- Red — `WardenDenied` thrown; reason surfaces in `e.reasons`.
-- Yellow — `WardenPending` thrown; `await e.resolve()` blocks until an
-  operator decides via `wardenctl` or the console.
+- Red — `ClavenarDenied` thrown; reason surfaces in `e.reasons`.
+- Yellow — `ClavenarPending` thrown; `await e.resolve()` blocks until an
+  operator decides via `clavenarctl` or the console.
 
 ## See also
 

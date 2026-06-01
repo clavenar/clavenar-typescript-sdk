@@ -1,13 +1,13 @@
 /**
- * Anthropic Computer Use + Agent Warden — gate every action a
+ * Anthropic Computer Use + Clavenar — gate every action a
  * computer-using agent takes (mouse click, keystroke, shell command,
  * file edit) before it reaches the workstation.
  *
  * Computer Use ships three tool types — `computer`, `bash`, and
  * `str_replace_editor` (text-editor) — each of which is dramatically
  * higher blast-radius than a typical agent tool. The standard
- * `wardenWrap` recipe still applies because each action lands as a
- * normal Anthropic `tool_use` block; warden inspects every block by
+ * `clavenarWrap` recipe still applies because each action lands as a
+ * normal Anthropic `tool_use` block; clavenar inspects every block by
  * default, so wrap-the-client is the entire integration. The job left
  * for the operator is to write policy rules that recognise the tool
  * names and deny what shouldn't run.
@@ -17,11 +17,11 @@
  * shape — extend `policies/agent_workstation.rego` in your deployment
  * with rules keyed off `input.params.name`.
  */
-import { wardenWrap, WardenDenied, WardenPending } from '../../src/index.js';
+import { clavenarWrap, ClavenarDenied, ClavenarPending } from '../../src/index.js';
 import type { AnthropicLike, AnthropicMessage } from '../../src/index.js';
 
-const endpoint = process.env['WARDEN_ENDPOINT'] ?? 'http://localhost:8088';
-const token = process.env['WARDEN_TOKEN'] ?? 'demo-token';
+const endpoint = process.env['CLAVENAR_ENDPOINT'] ?? 'http://localhost:8088';
+const token = process.env['CLAVENAR_TOKEN'] ?? 'demo-token';
 
 // Real wiring: `import Anthropic from '@anthropic-ai/sdk';
 //               const anthropic = new Anthropic();`
@@ -51,7 +51,7 @@ const anthropic: AnthropicLike = {
   },
 };
 
-const wrapped = wardenWrap(anthropic, { endpoint, token, mode: 'enforce' });
+const wrapped = clavenarWrap(anthropic, { endpoint, token, mode: 'enforce' });
 
 try {
   const msg = await wrapped.messages.create({
@@ -66,15 +66,15 @@ try {
   });
   console.log('green — content blocks:', msg.content.map((b) => b.type).join(', '));
 } catch (e) {
-  if (e instanceof WardenDenied) {
+  if (e instanceof ClavenarDenied) {
     console.log(`deny (${e.toolName}): ${e.reasons.join('; ')}`);
-  } else if (e instanceof WardenPending) {
+  } else if (e instanceof ClavenarPending) {
     console.log(`pending (${e.correlationId}) — awaiting operator`);
     try {
       await e.resolve();
       console.log('resolved: allow');
     } catch (decided) {
-      if (decided instanceof WardenDenied) {
+      if (decided instanceof ClavenarDenied) {
         console.log(`resolved: deny — ${decided.reasons.join('; ')}`);
       } else {
         throw decided;

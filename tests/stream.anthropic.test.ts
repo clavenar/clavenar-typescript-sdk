@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { wardenWrap, WardenDenied } from '../src/index.js';
+import { clavenarWrap, ClavenarDenied } from '../src/index.js';
 import type {
   AnthropicMessageStreamEvent,
 } from '../src/anthropic.js';
-import type { WardenVerdict, WardenVerdictContext } from '../src/types.js';
+import type { ClavenarVerdict, ClavenarVerdictContext } from '../src/types.js';
 
 function allowResponse(): Response {
   return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -67,7 +67,7 @@ async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
   return out;
 }
 
-describe('wardenWrap (Anthropic streaming)', () => {
+describe('clavenarWrap (Anthropic streaming)', () => {
   it('allow: streams every upstream event through unchanged', async () => {
     const events: AnthropicMessageStreamEvent[] = [
       { type: 'message_start', message: { id: 'msg_1', role: 'assistant' } },
@@ -76,7 +76,7 @@ describe('wardenWrap (Anthropic streaming)', () => {
     ];
     const fetch = vi.fn().mockResolvedValue(allowResponse());
     const create = vi.fn().mockResolvedValue(fromArray(events));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       { endpoint: 'http://w', fetch },
     );
@@ -100,7 +100,7 @@ describe('wardenWrap (Anthropic streaming)', () => {
     ];
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
     const create = vi.fn().mockResolvedValue(fromArray(events));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       { endpoint: 'http://w', fetch },
     );
@@ -108,10 +108,10 @@ describe('wardenWrap (Anthropic streaming)', () => {
     const collected: AnthropicMessageStreamEvent[] = [];
     try {
       for await (const e of stream) collected.push(e);
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      expect((e as WardenDenied).toolName).toBe('drop_table');
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      expect((e as ClavenarDenied).toolName).toBe('drop_table');
     }
     // Partner saw block_start + both deltas, but NEVER content_block_stop.
     expect(collected.map((x) => x.type)).toEqual([
@@ -127,9 +127,9 @@ describe('wardenWrap (Anthropic streaming)', () => {
       { type: 'message_stop' },
     ];
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
-    const verdicts: WardenVerdict[] = [];
+    const verdicts: ClavenarVerdict[] = [];
     const create = vi.fn().mockResolvedValue(fromArray(events));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -181,8 +181,8 @@ describe('wardenWrap (Anthropic streaming)', () => {
     ];
     const fetch = vi.fn().mockResolvedValue(allowResponse());
     const create = vi.fn().mockResolvedValue(fromArray(events));
-    const verdicts: WardenVerdictContext[] = [];
-    const wrapped = wardenWrap(
+    const verdicts: ClavenarVerdictContext[] = [];
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -215,7 +215,7 @@ describe('wardenWrap (Anthropic streaming)', () => {
     ];
     const fetch = vi.fn();
     const create = vi.fn().mockResolvedValue(fromArray(events));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       { endpoint: 'http://w', fetch },
     );
@@ -227,9 +227,9 @@ describe('wardenWrap (Anthropic streaming)', () => {
   it('onVerdict fires BEFORE the throw in enforce mode', async () => {
     const events: AnthropicMessageStreamEvent[] = toolUseEvents(0, 'toolu_x', 'drop_table', {});
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
-    const verdicts: WardenVerdict[] = [];
+    const verdicts: ClavenarVerdict[] = [];
     const create = vi.fn().mockResolvedValue(fromArray(events));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -240,7 +240,7 @@ describe('wardenWrap (Anthropic streaming)', () => {
       },
     );
     const stream = (await wrapped.messages.create({ stream: true })) as AsyncIterable<AnthropicMessageStreamEvent>;
-    await expect(collect(stream)).rejects.toBeInstanceOf(WardenDenied);
+    await expect(collect(stream)).rejects.toBeInstanceOf(ClavenarDenied);
     expect(verdicts).toHaveLength(1);
     expect(verdicts[0]?.kind).toBe('deny');
   });

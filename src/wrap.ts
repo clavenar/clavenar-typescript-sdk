@@ -1,8 +1,8 @@
 import {
-  WardenConfigError,
-  WardenDenied,
-  WardenPending,
-  WardenTransportError,
+  ClavenarConfigError,
+  ClavenarDenied,
+  ClavenarPending,
+  ClavenarTransportError,
 } from './errors.js';
 import { isToolUseBlock } from './anthropic.js';
 import type {
@@ -22,11 +22,11 @@ import type {
 } from './openai.js';
 import { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';
 import { inspectToolUse, pollPendingOnce } from './transport.js';
-import type { NormalizedToolCall, WardenOptions } from './types.js';
+import type { NormalizedToolCall, ClavenarOptions } from './types.js';
 
 /**
  * Wrap an Anthropic-like or OpenAI-like client so every tool call the
- * model emits is inspected by warden before the caller sees it.
+ * model emits is inspected by clavenar before the caller sees it.
  *
  * Detection is structural and runs once at wrap time:
  *
@@ -36,7 +36,7 @@ import type { NormalizedToolCall, WardenOptions } from './types.js';
  *   response, walk `choices[].message.tool_calls`, JSON-parse the
  *   `arguments` string, normalize, inspect.
  *
- * Anything else is rejected with {@link WardenConfigError} — we'd
+ * Anything else is rejected with {@link ClavenarConfigError} — we'd
  * rather fail loudly at boot than silently pass a stranger client
  * through unwrapped. Other client properties (`client.beta`,
  * `client.models`, custom subclasses) pass through unchanged via the
@@ -45,22 +45,22 @@ import type { NormalizedToolCall, WardenOptions } from './types.js';
  * Behavior is governed by `opts.mode`:
  *
  * - `'enforce'` (default): the first denied tool call aborts the
- *   call with {@link WardenDenied}; a pending verdict aborts with
- *   {@link WardenPending}. The upstream response is discarded. The
+ *   call with {@link ClavenarDenied}; a pending verdict aborts with
+ *   {@link ClavenarPending}. The upstream response is discarded. The
  *   `onVerdict` callback fires for that block before the throw, so
  *   observe-mode telemetry stays consistent across both modes.
  *
  * - `'observe'`: no throw. Every verdict is surfaced via
  *   `onVerdict`, the response passes through, and the partner's
  *   existing tool-execution loop runs the denied tool. Use this for
- *   rollouts where you need warden visibility without breaking the
+ *   rollouts where you need clavenar visibility without breaking the
  *   agent.
  */
-export function wardenWrap<T extends AnthropicLike>(client: T, opts: WardenOptions): T;
-export function wardenWrap<T extends OpenAIChatLike>(client: T, opts: WardenOptions): T;
-export function wardenWrap(
+export function clavenarWrap<T extends AnthropicLike>(client: T, opts: ClavenarOptions): T;
+export function clavenarWrap<T extends OpenAIChatLike>(client: T, opts: ClavenarOptions): T;
+export function clavenarWrap(
   client: AnthropicLike | OpenAIChatLike,
-  opts: WardenOptions,
+  opts: ClavenarOptions,
 ): AnthropicLike | OpenAIChatLike {
   validateOptions(opts);
   const kind = detectClient(client);
@@ -72,7 +72,7 @@ type ClientKind = 'anthropic' | 'openai-chat';
 
 function detectClient(client: unknown): ClientKind {
   if (!client || typeof client !== 'object') {
-    throw new WardenConfigError('wardenWrap: client must be an object');
+    throw new ClavenarConfigError('clavenarWrap: client must be an object');
   }
   const c = client as Record<string, unknown>;
   const anthropicCreate = (c['messages'] as { create?: unknown } | undefined)?.create;
@@ -81,12 +81,12 @@ function detectClient(client: unknown): ClientKind {
     (c['chat'] as { completions?: { create?: unknown } } | undefined)?.completions
   )?.create;
   if (typeof openaiCreate === 'function') return 'openai-chat';
-  throw new WardenConfigError(
-    'wardenWrap: client must expose messages.create() (Anthropic) or chat.completions.create() (OpenAI)',
+  throw new ClavenarConfigError(
+    'clavenarWrap: client must expose messages.create() (Anthropic) or chat.completions.create() (OpenAI)',
   );
 }
 
-function wrapAnthropic(client: AnthropicLike, opts: WardenOptions): AnthropicLike {
+function wrapAnthropic(client: AnthropicLike, opts: ClavenarOptions): AnthropicLike {
   const messagesProxy = new Proxy(client.messages, {
     get(target, prop, receiver) {
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
@@ -109,7 +109,7 @@ function wrapAnthropic(client: AnthropicLike, opts: WardenOptions): AnthropicLik
   });
 }
 
-function wrapOpenAIChat(client: OpenAIChatLike, opts: WardenOptions): OpenAIChatLike {
+function wrapOpenAIChat(client: OpenAIChatLike, opts: ClavenarOptions): OpenAIChatLike {
   const completionsProxy = new Proxy(client.chat.completions, {
     get(target, prop, receiver) {
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
@@ -176,7 +176,7 @@ function extractOpenAIChatCalls(result: OpenAIChatCompletion): NormalizedToolCal
  * first deny/pending.
  *
  * Calls are kicked off in parallel via `Promise.all` so a turn with
- * three tool_uses doesn't serialize three warden round-trips. The
+ * three tool_uses doesn't serialize three clavenar round-trips. The
  * `for` loop that consumes the results still preserves submission
  * order — the first deny in `calls[]` is the one that throws, not
  * the first deny to come back over the wire.
@@ -192,7 +192,7 @@ function extractOpenAIChatCalls(result: OpenAIChatCompletion): NormalizedToolCal
  */
 async function inspectAllToolCalls(
   calls: NormalizedToolCall[],
-  opts: WardenOptions,
+  opts: ClavenarOptions,
 ): Promise<void> {
   const enforce = (opts.mode ?? 'enforce') === 'enforce';
   if (calls.length === 0) return;
@@ -201,7 +201,7 @@ async function inspectAllToolCalls(
       try {
         return { ok: true as const, verdict: await inspectToolUse(c, opts) };
       } catch (e) {
-        if (!enforce && e instanceof WardenTransportError) {
+        if (!enforce && e instanceof ClavenarTransportError) {
           return { ok: false as const, error: e };
         }
         throw e;
@@ -226,7 +226,7 @@ async function inspectAllToolCalls(
     }
     if (!enforce) continue;
     if (verdict.kind === 'deny') {
-      throw new WardenDenied({
+      throw new ClavenarDenied({
         toolName: call.name,
         reasons: verdict.payload.reasons,
         reviewReasons: verdict.payload.review_reasons,
@@ -235,7 +235,7 @@ async function inspectAllToolCalls(
       });
     }
     if (verdict.kind === 'pending') {
-      throw new WardenPending({
+      throw new ClavenarPending({
         toolName: call.name,
         correlationId: verdict.correlationId,
         reviewReasons: verdict.reviewReasons,
@@ -245,19 +245,19 @@ async function inspectAllToolCalls(
   }
 }
 
-function validateOptions(opts: WardenOptions): void {
+function validateOptions(opts: ClavenarOptions): void {
   if (!opts || typeof opts.endpoint !== 'string' || opts.endpoint.length === 0) {
-    throw new WardenConfigError('wardenWrap: opts.endpoint is required');
+    throw new ClavenarConfigError('clavenarWrap: opts.endpoint is required');
   }
   try {
     new URL(opts.endpoint);
   } catch {
-    throw new WardenConfigError(`wardenWrap: opts.endpoint is not a valid URL: ${opts.endpoint}`);
+    throw new ClavenarConfigError(`clavenarWrap: opts.endpoint is not a valid URL: ${opts.endpoint}`);
   }
   if (opts.timeoutMs !== undefined && (opts.timeoutMs <= 0 || !Number.isFinite(opts.timeoutMs))) {
-    throw new WardenConfigError('wardenWrap: opts.timeoutMs must be a positive finite number');
+    throw new ClavenarConfigError('clavenarWrap: opts.timeoutMs must be a positive finite number');
   }
   if (opts.mode !== undefined && opts.mode !== 'enforce' && opts.mode !== 'observe') {
-    throw new WardenConfigError(`wardenWrap: opts.mode must be 'enforce' or 'observe' (got '${opts.mode}')`);
+    throw new ClavenarConfigError(`clavenarWrap: opts.mode must be 'enforce' or 'observe' (got '${opts.mode}')`);
   }
 }

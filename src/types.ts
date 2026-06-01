@@ -1,14 +1,14 @@
 /**
- * Configuration for {@link wardenWrap}.
+ * Configuration for {@link clavenarWrap}.
  *
- * `endpoint` is the warden-lite ingress URL. `token` is the optional
- * shared bearer set via `WARDEN_LITE_TOKEN`. `mode` mirrors the
- * future `WARDEN_MODE` env on the server: in `observe` the SDK
+ * `endpoint` is the clavenar-lite ingress URL. `token` is the optional
+ * shared bearer set via `CLAVENAR_LITE_TOKEN`. `mode` mirrors the
+ * future `CLAVENAR_MODE` env on the server: in `observe` the SDK
  * inspects + logs but never blocks. Server-side observe ships in
  * roadmap week 3; the client-side override is here so partners can
  * force-observe per-call during rollout without server changes.
  */
-export interface WardenOptions {
+export interface ClavenarOptions {
   endpoint: string;
   token?: string;
   mode?: 'enforce' | 'observe';
@@ -17,20 +17,20 @@ export interface WardenOptions {
   /** Override the global fetch (testing). */
   fetch?: typeof fetch;
   /**
-   * Called once per inspected tool_use with the verdict warden
+   * Called once per inspected tool_use with the verdict clavenar
    * returned. Fires before any deny→throw translation, so callers
    * can record observe-mode telemetry without changing the throw
    * semantics. Errors thrown here are propagated to the caller.
    */
-  onVerdict?: (verdict: WardenVerdict, ctx: WardenVerdictContext) => void | Promise<void>;
+  onVerdict?: (verdict: ClavenarVerdict, ctx: ClavenarVerdictContext) => void | Promise<void>;
   /**
-   * Called when an inspection fails at the transport layer (warden
+   * Called when an inspection fails at the transport layer (clavenar
    * unreachable, 5xx after retries exhausted, malformed body, …).
    *
    * In `mode: 'observe'` this fires per failed inspection and the
    * underlying agent call is treated as allowed — the SDK's
    * observe-mode promise ("no throw, response passes through") is
-   * preserved even when warden itself is down. Use this hook to log
+   * preserved even when clavenar itself is down. Use this hook to log
    * / alert / fall back to a default deny on your side.
    *
    * In `mode: 'enforce'` the SDK still throws the transport error
@@ -42,18 +42,18 @@ export interface WardenOptions {
    * caller. Default: no-op.
    */
   onPolicyError?: (
-    error: import('./errors.js').WardenTransportError,
-    ctx: WardenVerdictContext,
+    error: import('./errors.js').ClavenarTransportError,
+    ctx: ClavenarVerdictContext,
   ) => void | Promise<void>;
   /**
    * Retry policy applied per inspection. Defaults to 3 attempts
    * with 100ms base delay. Set `maxAttempts: 1` to disable retries.
    */
-  retry?: WardenRetryOptions;
+  retry?: ClavenarRetryOptions;
 }
 
-/** Context passed to {@link WardenOptions.onVerdict}. */
-export interface WardenVerdictContext {
+/** Context passed to {@link ClavenarOptions.onVerdict}. */
+export interface ClavenarVerdictContext {
   toolName: string;
   toolUseId: string;
   toolInput: unknown;
@@ -65,7 +65,7 @@ export interface WardenVerdictContext {
  * `tool_calls` entries reach this shape via `normalizeChatToolCall`
  * (which JSON-parses the string `arguments` field).
  *
- * The `id` round-trips into warden-lite's ledger as the JSON-RPC
+ * The `id` round-trips into clavenar-lite's ledger as the JSON-RPC
  * envelope id — `toolu_*` for Anthropic, `call_*` for OpenAI. Both
  * are dense enough to correlate a verdict back to the model's exact
  * call.
@@ -77,11 +77,11 @@ export interface NormalizedToolCall {
 }
 
 /**
- * Wire shape of warden-lite's `POST /mcp` request body. Mirrors
- * `McpRequest` in `warden-lite/src/proxy.rs`. We send `tools/call` as
+ * Wire shape of clavenar-lite's `POST /mcp` request body. Mirrors
+ * `McpRequest` in `clavenar-lite/src/proxy.rs`. We send `tools/call` as
  * the method and pack tool name + arguments into `params`.
  */
-export interface WardenInspectRequest {
+export interface ClavenarInspectRequest {
   jsonrpc: '2.0';
   method: string;
   params: {
@@ -92,11 +92,11 @@ export interface WardenInspectRequest {
 }
 
 /**
- * Wire shape of warden-lite's 403 `security_violation` response. Any
+ * Wire shape of clavenar-lite's 403 `security_violation` response. Any
  * non-403 response is opaque (200 means "the upstream forwarded
  * fine"); only the deny payload has a defined shape.
  */
-export interface WardenDenyResponse {
+export interface ClavenarDenyResponse {
   error: 'security_violation';
   reasons: string[];
   review_reasons: string[];
@@ -107,33 +107,33 @@ export interface WardenDenyResponse {
  * Result of inspecting one tool call. Internal — callers receive a
  * thrown error on deny instead of a tagged union.
  *
- * `correlationId` (when present) is the value warden-lite sets on
- * the `X-Warden-Correlation-Id` response header — opaque to the SDK,
+ * `correlationId` (when present) is the value clavenar-lite sets on
+ * the `X-Clavenar-Correlation-Id` response header — opaque to the SDK,
  * load-bearing for ledger lookups partner-side.
  */
-export type WardenVerdict =
+export type ClavenarVerdict =
   | { kind: 'allow'; correlationId?: string }
-  | { kind: 'deny'; payload: WardenDenyResponse; correlationId?: string }
+  | { kind: 'deny'; payload: ClavenarDenyResponse; correlationId?: string }
   | { kind: 'pending'; correlationId: string; reviewReasons: string[] };
 
 /**
- * Wire shape of warden-lite's 202 Accepted body (yellow tier — the
+ * Wire shape of clavenar-lite's 202 Accepted body (yellow tier — the
  * request was parked for human review). Matches the `PendingResponse`
- * struct in `warden-lite/src/proxy.rs`.
+ * struct in `clavenar-lite/src/proxy.rs`.
  */
-export interface WardenPendingResponse {
+export interface ClavenarPendingResponse {
   status: 'pending';
   correlation_id: string;
   review_reasons: string[];
 }
 
 /**
- * Wire shape of warden-lite's `GET /pending/{id}` and decide
- * responses. Mirrors `PendingView` in `warden-lite/src/proxy.rs`.
+ * Wire shape of clavenar-lite's `GET /pending/{id}` and decide
+ * responses. Mirrors `PendingView` in `clavenar-lite/src/proxy.rs`.
  * `decision` is `null` until an operator decides; the SDK's polling
  * loop watches this field.
  */
-export interface WardenPendingView {
+export interface ClavenarPendingView {
   correlation_id: string;
   agent_id: string;
   tool_type: string;
@@ -146,12 +146,12 @@ export interface WardenPendingView {
 }
 
 /**
- * Options for {@link WardenPending.resolve}. Both knobs are bounded:
+ * Options for {@link ClavenarPending.resolve}. Both knobs are bounded:
  * partners override them per-call if their human-approval cycle is
  * either much faster (in-product approval button) or much slower
  * (Slack notification to oncall).
  */
-export interface WardenResolveOptions {
+export interface ClavenarResolveOptions {
   /** Milliseconds between polls. Default 2000. */
   pollIntervalMs?: number;
   /** Hard ceiling on the total wait. Default 600_000 (10 minutes). */
@@ -164,7 +164,7 @@ export interface WardenResolveOptions {
  * backoff (`baseDelayMs * 2^attempt`, jittered). 4xx (other than
  * 403, which is a verdict) and 200 never retry.
  */
-export interface WardenRetryOptions {
+export interface ClavenarRetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
 }

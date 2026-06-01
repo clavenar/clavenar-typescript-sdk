@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  wardenWrap,
-  WardenConfigError,
-  WardenDenied,
-  WardenTransportError,
+  clavenarWrap,
+  ClavenarConfigError,
+  ClavenarDenied,
+  ClavenarTransportError,
 } from '../src/index.js';
 import type { AnthropicMessage } from '../src/anthropic.js';
-import type { WardenVerdict, WardenVerdictContext } from '../src/types.js';
+import type { ClavenarVerdict, ClavenarVerdictContext } from '../src/types.js';
 
 function makeMessage(content: AnthropicMessage['content']): AnthropicMessage {
   return {
@@ -34,40 +34,40 @@ function denyResponse(toolName: string): Response {
   );
 }
 
-describe('wardenWrap (config validation)', () => {
+describe('clavenarWrap (config validation)', () => {
   const fakeClient = { messages: { create: async () => makeMessage([]) } };
 
   it('rejects empty endpoint', () => {
-    expect(() => wardenWrap(fakeClient, { endpoint: '' })).toThrow(WardenConfigError);
+    expect(() => clavenarWrap(fakeClient, { endpoint: '' })).toThrow(ClavenarConfigError);
   });
   it('rejects malformed endpoint', () => {
-    expect(() => wardenWrap(fakeClient, { endpoint: 'not-a-url' })).toThrow(WardenConfigError);
+    expect(() => clavenarWrap(fakeClient, { endpoint: 'not-a-url' })).toThrow(ClavenarConfigError);
   });
   it('rejects clients without messages.create', () => {
-    expect(() => wardenWrap({} as never, { endpoint: 'http://localhost:8088' })).toThrow(
-      WardenConfigError,
+    expect(() => clavenarWrap({} as never, { endpoint: 'http://localhost:8088' })).toThrow(
+      ClavenarConfigError,
     );
   });
   it('rejects negative timeout', () => {
     expect(() =>
-      wardenWrap(fakeClient, { endpoint: 'http://localhost:8088', timeoutMs: -1 }),
-    ).toThrow(WardenConfigError);
+      clavenarWrap(fakeClient, { endpoint: 'http://localhost:8088', timeoutMs: -1 }),
+    ).toThrow(ClavenarConfigError);
   });
   it('rejects unknown mode', () => {
     expect(() =>
       // @ts-expect-error — testing runtime guard against typo'd literals
-      wardenWrap(fakeClient, { endpoint: 'http://localhost:8088', mode: 'enforcing' }),
-    ).toThrow(WardenConfigError);
+      clavenarWrap(fakeClient, { endpoint: 'http://localhost:8088', mode: 'enforcing' }),
+    ).toThrow(ClavenarConfigError);
   });
 });
 
-describe('wardenWrap (interception)', () => {
+describe('clavenarWrap (interception)', () => {
   it('passes through messages without tool_use unchanged', async () => {
     const message = makeMessage([{ type: 'text', text: 'hi' }]);
     const fetch = vi.fn();
     const client = { messages: { create: vi.fn().mockResolvedValue(message) } };
 
-    const wrapped = wardenWrap(client, { endpoint: 'http://w', fetch });
+    const wrapped = clavenarWrap(client, { endpoint: 'http://w', fetch });
     const result = await wrapped.messages.create({});
 
     expect(result).toBe(message);
@@ -86,8 +86,8 @@ describe('wardenWrap (interception)', () => {
       .mockResolvedValueOnce(denyResponse('delete_user'));
     const create = vi.fn().mockResolvedValue(message);
 
-    const verdicts: Array<[WardenVerdict, WardenVerdictContext]> = [];
-    const wrapped = wardenWrap(
+    const verdicts: Array<[ClavenarVerdict, ClavenarVerdictContext]> = [];
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -113,7 +113,7 @@ describe('wardenWrap (interception)', () => {
 
   it('forwards arbitrary create() args to the upstream client', async () => {
     const create = vi.fn().mockResolvedValue(makeMessage([]));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       { endpoint: 'http://w', fetch: vi.fn() },
     );
@@ -126,14 +126,14 @@ describe('wardenWrap (interception)', () => {
       messages: { create: vi.fn().mockResolvedValue(makeMessage([])) },
       extras: { baseURL: 'https://api.anthropic.com' },
     };
-    const wrapped = wardenWrap(client, { endpoint: 'http://w', fetch: vi.fn() });
+    const wrapped = clavenarWrap(client, { endpoint: 'http://w', fetch: vi.fn() });
     // @ts-expect-error — extras is not on AnthropicLike but rides through.
     expect(wrapped.extras.baseURL).toBe('https://api.anthropic.com');
   });
 
   it('propagates upstream messages.create errors', async () => {
     const upstream = new Error('rate limited');
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => { throw upstream; } } },
       { endpoint: 'http://w', fetch: vi.fn() },
     );
@@ -144,7 +144,7 @@ describe('wardenWrap (interception)', () => {
     const message = { ...makeMessage([]) } as AnthropicMessage;
     delete (message as unknown as { content?: unknown }).content;
     const fetch = vi.fn();
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
@@ -158,7 +158,7 @@ describe('wardenWrap (interception)', () => {
       { type: 'tool_use', id: 'toolu_a', name: 'ping', input: {} },
     ]);
     const fetch = vi.fn().mockResolvedValue(allowResponse());
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       {
         endpoint: 'http://w',
@@ -174,22 +174,22 @@ describe('wardenWrap (interception)', () => {
   });
 });
 
-describe('wardenWrap (enforce-mode semantics — default)', () => {
-  it('throws WardenDenied with parsed payload on first deny', async () => {
+describe('clavenarWrap (enforce-mode semantics — default)', () => {
+  it('throws ClavenarDenied with parsed payload on first deny', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_x', name: 'drop_table', input: { table: 'users' } },
     ]);
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
     try {
       await wrapped.messages.create({});
-      expect.fail('expected wardenWrap to throw WardenDenied');
+      expect.fail('expected clavenarWrap to throw ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      const denied = e as WardenDenied;
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      const denied = e as ClavenarDenied;
       expect(denied.toolName).toBe('drop_table');
       expect(denied.reasons).toEqual(['policy: drop_table blocked']);
       expect(denied.intentCategory).toBe('PolicyDeny');
@@ -206,20 +206,20 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
       .fn()
       .mockResolvedValueOnce(denyResponse('drop_table'))
       .mockResolvedValueOnce(allowResponse());
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
     try {
       await wrapped.messages.create({});
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
+      expect(e).toBeInstanceOf(ClavenarDenied);
       // First deny in submission order — drop_table, not the
       // second block — is the one that throws.
-      expect((e as WardenDenied).toolName).toBe('drop_table');
+      expect((e as ClavenarDenied).toolName).toBe('drop_table');
     }
-    // Both inspections fire concurrently — partner pays one warden
+    // Both inspections fire concurrently — partner pays one clavenar
     // round-trip of latency, not two.
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -229,8 +229,8 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
       { type: 'tool_use', id: 'toolu_x', name: 'drop_table', input: {} },
     ]);
     const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
-    const verdicts: WardenVerdict[] = [];
-    const wrapped = wardenWrap(
+    const verdicts: ClavenarVerdict[] = [];
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       {
         endpoint: 'http://w',
@@ -240,7 +240,7 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
         },
       },
     );
-    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(WardenDenied);
+    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(ClavenarDenied);
     expect(verdicts).toHaveLength(1);
     expect(verdicts[0]?.kind).toBe('deny');
   });
@@ -250,7 +250,7 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
       { type: 'tool_use', id: 'toolu_a', name: 'fetch_user', input: {} },
     ]);
     const fetch = vi.fn().mockResolvedValue(allowResponse());
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
@@ -259,7 +259,7 @@ describe('wardenWrap (enforce-mode semantics — default)', () => {
 
 });
 
-describe('wardenWrap (parallel inspection)', () => {
+describe('clavenarWrap (parallel inspection)', () => {
   it('kicks off every tool_use inspection before any resolves', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_a', name: 'fetch_user', input: { id: 1 } },
@@ -283,7 +283,7 @@ describe('wardenWrap (parallel inspection)', () => {
       .mockReturnValueOnce(deferreds[0]!.promise)
       .mockReturnValueOnce(deferreds[1]!.promise)
       .mockReturnValueOnce(deferreds[2]!.promise);
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
@@ -298,7 +298,7 @@ describe('wardenWrap (parallel inspection)', () => {
     await callPromise;
   });
 
-  it('surfaces correlationId from response header onto WardenDenied', async () => {
+  it('surfaces correlationId from response header onto ClavenarDenied', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_x', name: 'drop_table', input: {} },
     ]);
@@ -314,31 +314,31 @@ describe('wardenWrap (parallel inspection)', () => {
           status: 403,
           headers: {
             'Content-Type': 'application/json',
-            'X-Warden-Correlation-Id': 'corr_xyz_123',
+            'X-Clavenar-Correlation-Id': 'corr_xyz_123',
           },
         },
       ),
     );
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
     try {
       await wrapped.messages.create({});
-      expect.fail('expected WardenDenied');
+      expect.fail('expected ClavenarDenied');
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenDenied);
-      expect((e as WardenDenied).correlationId).toBe('corr_xyz_123');
+      expect(e).toBeInstanceOf(ClavenarDenied);
+      expect((e as ClavenarDenied).correlationId).toBe('corr_xyz_123');
     }
   });
 });
 
-describe('wardenWrap (pending verdict throws WardenPending)', () => {
-  // Yellow-tier wire support landed in warden-lite week-3-Mon; the
-  // SDK side here converts the verdict to a WardenPending throw and
+describe('clavenarWrap (pending verdict throws ClavenarPending)', () => {
+  // Yellow-tier wire support landed in clavenar-lite week-3-Mon; the
+  // SDK side here converts the verdict to a ClavenarPending throw and
   // pre-binds the poll callback so `await e.resolve()` works on the
   // catch-side.
-  it('converts pending verdict to WardenPending in enforce mode', async () => {
+  it('converts pending verdict to ClavenarPending in enforce mode', async () => {
     vi.resetModules();
     vi.doMock('../src/transport.js', () => ({
       inspectToolUse: async () => ({
@@ -359,7 +359,7 @@ describe('wardenWrap (pending verdict throws WardenPending)', () => {
       }),
       joinUrl: (a: string, b: string) => `${a}/${b}`,
     }));
-    const { wardenWrap: wrapMocked, WardenPending: PendingMocked } = await import(
+    const { clavenarWrap: wrapMocked, ClavenarPending: PendingMocked } = await import(
       '../src/index.js'
     );
     const message = makeMessage([
@@ -371,7 +371,7 @@ describe('wardenWrap (pending verdict throws WardenPending)', () => {
     );
     try {
       await wrapped.messages.create({});
-      expect.fail('expected WardenPending');
+      expect.fail('expected ClavenarPending');
     } catch (e) {
       expect(e).toBeInstanceOf(PendingMocked);
       const p = e as InstanceType<typeof PendingMocked>;
@@ -388,17 +388,17 @@ describe('wardenWrap (pending verdict throws WardenPending)', () => {
   });
 });
 
-describe('wardenWrap (observe-mode transport-error resilience)', () => {
-  it('observe mode: warden down → response passes through, onPolicyError fires', async () => {
+describe('clavenarWrap (observe-mode transport-error resilience)', () => {
+  it('observe mode: clavenar down → response passes through, onPolicyError fires', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_x', name: 'fetch_user', input: { id: 1 } },
     ]);
-    // Reject every fetch — warden-lite is unreachable / down.
+    // Reject every fetch — clavenar-lite is unreachable / down.
     const fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
     const create = vi.fn().mockResolvedValue(message);
     const policyErrors: Array<{ tool: string; status?: number }> = [];
 
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -411,7 +411,7 @@ describe('wardenWrap (observe-mode transport-error resilience)', () => {
       },
     );
 
-    // No throw despite warden being unreachable — observe contract.
+    // No throw despite clavenar being unreachable — observe contract.
     const result = await wrapped.messages.create({});
     expect(result).toBe(message);
     expect(policyErrors).toEqual([{ tool: 'fetch_user', status: undefined }]);
@@ -432,7 +432,7 @@ describe('wardenWrap (observe-mode transport-error resilience)', () => {
     const verdicts: string[] = [];
     const policyErrors: string[] = [];
 
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -454,7 +454,7 @@ describe('wardenWrap (observe-mode transport-error resilience)', () => {
     expect(policyErrors).toEqual(['delete_user']);
   });
 
-  it('enforce mode (default): transport failure still throws WardenTransportError', async () => {
+  it('enforce mode (default): transport failure still throws ClavenarTransportError', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_x', name: 'fetch_user', input: { id: 1 } },
     ]);
@@ -462,7 +462,7 @@ describe('wardenWrap (observe-mode transport-error resilience)', () => {
     const create = vi.fn().mockResolvedValue(message);
     const policyErrors: number[] = [];
 
-    const wrapped = wardenWrap(
+    const wrapped = clavenarWrap(
       { messages: { create } },
       {
         endpoint: 'http://w',
@@ -474,7 +474,7 @@ describe('wardenWrap (observe-mode transport-error resilience)', () => {
       },
     );
 
-    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(WardenTransportError);
+    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(ClavenarTransportError);
     // Enforce mode never invokes onPolicyError — the throw is the
     // signal, and the callback exists for observe consumers only.
     expect(policyErrors).toEqual([]);

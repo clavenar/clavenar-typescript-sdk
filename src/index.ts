@@ -1,19 +1,19 @@
-export { wardenWrap } from './wrap.js';
+export { clavenarWrap } from './wrap.js';
 export { inspectToolUse } from './transport.js';
 export {
-  WardenDenied,
-  WardenPending,
-  WardenConfigError,
-  WardenTransportError,
+  ClavenarDenied,
+  ClavenarPending,
+  ClavenarConfigError,
+  ClavenarTransportError,
 } from './errors.js';
 export type {
-  WardenOptions,
-  WardenInspectRequest,
-  WardenDenyResponse,
-  WardenVerdict,
-  WardenVerdictContext,
+  ClavenarOptions,
+  ClavenarInspectRequest,
+  ClavenarDenyResponse,
+  ClavenarVerdict,
+  ClavenarVerdictContext,
   NormalizedToolCall,
-  WardenRetryOptions,
+  ClavenarRetryOptions,
 } from './types.js';
 export type {
   AnthropicLike,

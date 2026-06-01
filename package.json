@@ -1,16 +1,16 @@
 {
-  "name": "@vanteguardlabs/warden-ai-sdk",
+  "name": "@vanteguardlabs/clavenar-ai-sdk",
   "version": "0.3.0",
-  "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Agent Warden before it runs.",
+  "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Clavenar before it runs.",
   "license": "Apache-2.0",
   "author": "VanteguardLabs <vanteguardlabs@gmail.com>",
   "homepage": "https://warden.vanteguardlabs.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vanteguardlabs/warden-ai-sdk"
+    "url": "https://github.com/clavenar/clavenar-ai-sdk"
   },
   "bugs": {
-    "url": "https://github.com/vanteguardlabs/warden-ai-sdk/issues"
+    "url": "https://github.com/clavenar/clavenar-ai-sdk/issues"
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -73,8 +73,8 @@
     "vitest": "^1.4.0"
   },
   "keywords": [
-    "warden",
-    "agent-warden",
+    "clavenar",
+    "agent-clavenar",
     "ai-security",
     "mcp",
     "anthropic",
