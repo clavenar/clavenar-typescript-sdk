@@ -4,7 +4,7 @@
   "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Clavenar before it runs.",
   "license": "Apache-2.0",
   "author": "VanteguardLabs <vanteguardlabs@gmail.com>",
-  "homepage": "https://warden.vanteguardlabs.com",
+  "homepage": "https://clavenar.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/clavenar/clavenar-ai-sdk"

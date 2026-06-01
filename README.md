@@ -3,7 +3,7 @@
 [![CI](https://github.com/clavenar/clavenar-ai-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/clavenar/clavenar-ai-sdk/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@vanteguardlabs/clavenar-ai-sdk.svg)](https://www.npmjs.com/package/@vanteguardlabs/clavenar-ai-sdk)
 
-TypeScript SDK for [Clavenar](https://warden.vanteguardlabs.com).
+TypeScript SDK for [Clavenar](https://clavenar.com).
 Wraps your Anthropic or OpenAI client and inspects every tool call
 the model emits against your policies *before* your tool-execution
 loop runs it.
