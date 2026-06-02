@@ -267,6 +267,7 @@ async function processVerdict(
       reasons: verdict.payload.reasons,
       reviewReasons: verdict.payload.review_reasons,
       intentCategory: verdict.payload.intent_category,
+      ...(verdict.payload.layer !== undefined && { layer: verdict.payload.layer }),
       ...(verdict.correlationId !== undefined && { correlationId: verdict.correlationId }),
     });
   }

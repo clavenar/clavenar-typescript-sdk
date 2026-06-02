@@ -188,9 +188,11 @@ end-to-end against a local clavenar-lite:
 ### Exceptions
 
 - `ClavenarDenied` — verdict was `deny`. Carries `toolName`, `reasons`,
-  `reviewReasons`, `intentCategory`, and `correlationId` (when
-  clavenar-lite emits `X-Clavenar-Correlation-Id`) for direct ledger
-  lookup.
+  `reviewReasons`, `intentCategory`, `layer` (the stage that said no —
+  `brain`, `policy`, `hil`, `egress`, …, when the server reports it),
+  and `correlationId` (when the server emits `X-Clavenar-Correlation-Id`)
+  for direct ledger lookup. Works against both clavenar-lite and the
+  full-edition proxy, which now share one JSON 403 envelope.
 - `ClavenarPending` — verdict was `pending` (HIL parked the call).
   Carries `toolName`, `correlationId`, and `reviewReasons`. Also
   exposes `resolve({pollIntervalMs?, timeoutMs?}): Promise<void>` —

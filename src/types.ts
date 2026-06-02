@@ -92,15 +92,25 @@ export interface ClavenarInspectRequest {
 }
 
 /**
- * Wire shape of clavenar-lite's 403 `security_violation` response. Any
- * non-403 response is opaque (200 means "the upstream forwarded
- * fine"); only the deny payload has a defined shape.
+ * Wire shape of the shared 403 error envelope emitted by both
+ * clavenar-lite and full-edition clavenar-proxy. `error` is a machine
+ * code (`security_violation`, `egress_blocked`, `review_denied`,
+ * `pipeline_unavailable`, …); `layer` names the stage that said no
+ * (`brain`, `policy`, `hil`, `egress`, …). `review_reasons` and
+ * `intent_category` are normalised to present values by the transport
+ * even when the server omits them.
  */
 export interface ClavenarDenyResponse {
-  error: 'security_violation';
+  error: string;
   reasons: string[];
   review_reasons: string[];
   intent_category: string;
+  /** Coarse outcome (`denied`, `review_denied`, …), when reported. */
+  verdict?: string;
+  /** Stage that produced the deny, when reported. */
+  layer?: string;
+  /** Proxy-stamped join key for the audit row, when in the body. */
+  correlation_id?: string;
 }
 
 /**

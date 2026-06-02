@@ -285,18 +285,28 @@ async function parseDenyBody(response: Response): Promise<ClavenarDenyResponse> 
       403,
     );
   }
-  return parsed;
+  // Normalise the envelope: the server omits empty `review_reasons` and
+  // absent `intent_category`, and uses several `error` codes / layers.
+  // Fill the always-present fields so downstream code stays simple.
+  const r = parsed as Record<string, unknown>;
+  const deny: ClavenarDenyResponse = {
+    error: r['error'] as string,
+    reasons: Array.isArray(r['reasons']) ? (r['reasons'] as string[]) : [],
+    review_reasons: Array.isArray(r['review_reasons']) ? (r['review_reasons'] as string[]) : [],
+    intent_category: typeof r['intent_category'] === 'string' ? (r['intent_category'] as string) : '',
+  };
+  if (typeof r['verdict'] === 'string') deny.verdict = r['verdict'];
+  if (typeof r['layer'] === 'string') deny.layer = r['layer'];
+  if (typeof r['correlation_id'] === 'string') deny.correlation_id = r['correlation_id'];
+  return deny;
 }
 
-function isDenyResponse(v: unknown): v is ClavenarDenyResponse {
+// A deny envelope is anything with a string `error` code; the rest of
+// the fields are optional/normalised in `parseDenyBody`.
+function isDenyResponse(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
-  return (
-    r['error'] === 'security_violation' &&
-    Array.isArray(r['reasons']) &&
-    Array.isArray(r['review_reasons']) &&
-    typeof r['intent_category'] === 'string'
-  );
+  return typeof r['error'] === 'string';
 }
 
 async function safeReadText(response: Response): Promise<string> {

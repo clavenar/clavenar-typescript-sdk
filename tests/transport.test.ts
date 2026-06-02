@@ -40,6 +40,30 @@ describe('inspectToolUse', () => {
     expect(verdict).toEqual({ kind: 'deny', payload: denyBody });
   });
 
+  it('parses a full-proxy envelope (non-security_violation error, layer, omitted fields)', async () => {
+    // The full edition uses varied error codes and omits empty
+    // review_reasons / absent intent_category; the transport must
+    // normalise rather than reject these as "unexpected shape".
+    const fetch = vi.fn().mockResolvedValue(
+      fakeResponse(403, {
+        verdict: 'denied',
+        layer: 'egress',
+        error: 'egress_blocked',
+        reasons: ['Egress blocked — sensitive data detected in the upstream response.'],
+        correlation_id: 'c-77',
+      }),
+    );
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict.kind).toBe('deny');
+    if (verdict.kind === 'deny') {
+      expect(verdict.payload.error).toBe('egress_blocked');
+      expect(verdict.payload.layer).toBe('egress');
+      expect(verdict.payload.review_reasons).toEqual([]);
+      expect(verdict.payload.intent_category).toBe('');
+      expect(verdict.payload.correlation_id).toBe('c-77');
+    }
+  });
+
   it('throws ClavenarTransportError on 401', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(401, 'missing or invalid bearer token'));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({

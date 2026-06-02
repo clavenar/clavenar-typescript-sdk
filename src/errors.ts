@@ -1,7 +1,8 @@
 /**
- * Thrown when clavenar returns a 403 security_violation for a tool call.
- * Carries the structured reason payload from clavenar-lite so callers
- * can branch on `intent_category` or surface `reasons` to a human.
+ * Thrown when clavenar returns a 403 for a tool call. Carries the
+ * structured reason envelope (shared by clavenar-lite and full-edition
+ * clavenar-proxy) so callers can branch on `intentCategory` / `layer`
+ * or surface `reasons` to a human.
  */
 export class ClavenarDenied extends Error {
   override readonly name = 'ClavenarDenied';
@@ -10,7 +11,13 @@ export class ClavenarDenied extends Error {
   readonly intentCategory: string;
   readonly toolName: string;
   /**
-   * Clavenar's correlation id for this inspection, when clavenar-lite
+   * Stage that produced the deny (`brain`, `policy`, `hil`, `egress`,
+   * …), when the server reports it. Undefined for older servers or
+   * operator-driven pending denials.
+   */
+  readonly layer: string | undefined;
+  /**
+   * Clavenar's correlation id for this inspection, when the server
    * sets `X-Clavenar-Correlation-Id`. Use this to look the call up in
    * the audit ledger. Undefined when the deployment doesn't emit the
    * header (older builds, partner-deployed gateways).
@@ -22,6 +29,7 @@ export class ClavenarDenied extends Error {
     reasons: string[];
     reviewReasons: string[];
     intentCategory: string;
+    layer?: string;
     correlationId?: string;
   }) {
     super(`clavenar denied tool "${args.toolName}": ${args.reasons.join(' | ')}`);
@@ -29,6 +37,7 @@ export class ClavenarDenied extends Error {
     this.reasons = args.reasons;
     this.reviewReasons = args.reviewReasons;
     this.intentCategory = args.intentCategory;
+    this.layer = args.layer;
     this.correlationId = args.correlationId;
   }
 }
