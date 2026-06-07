@@ -9,7 +9,7 @@ executes.
 ## Run it
 
 ```bash
-npm install @anthropic-ai/sdk @vanteguardlabs/clavenar-ai-sdk
+npm install @anthropic-ai/sdk @clavenar/agent-sdk
 ANTHROPIC_API_KEY=sk-ant-... node --import tsx run.ts
 ```
 

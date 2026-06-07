@@ -20,7 +20,7 @@ directory is a variation on it.
 ## Run it
 
 ```bash
-npm install openai @vanteguardlabs/clavenar-ai-sdk
+npm install openai @clavenar/agent-sdk
 OPENAI_API_KEY=sk-... node --import tsx run.ts
 ```
 

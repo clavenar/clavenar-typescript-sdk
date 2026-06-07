@@ -1,4 +1,4 @@
-// Flat-config ESLint setup for clavenar-ai-sdk.
+// Flat-config ESLint setup for clavenar-typescript-sdk.
 //
 // Composes the standard JS + typescript-eslint recommended rule sets and
 // disables stylistic rules that conflict with Prettier (eslint-config-prettier

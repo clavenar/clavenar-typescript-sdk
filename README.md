@@ -1,7 +1,7 @@
-# @vanteguardlabs/clavenar-ai-sdk
+# @clavenar/agent-sdk
 
-[![CI](https://github.com/clavenar/clavenar-ai-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/clavenar/clavenar-ai-sdk/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@vanteguardlabs/clavenar-ai-sdk.svg)](https://www.npmjs.com/package/@vanteguardlabs/clavenar-ai-sdk)
+[![CI](https://github.com/clavenar/clavenar-typescript-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/clavenar/clavenar-typescript-sdk/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@clavenar/agent-sdk.svg)](https://www.npmjs.com/package/@clavenar/agent-sdk)
 
 TypeScript SDK for [Clavenar](https://clavenar.com).
 Wraps your Anthropic or OpenAI client and inspects every tool call
@@ -28,7 +28,7 @@ docker run -p 8088:8088 \
   ghcr.io/clavenar/clavenar-lite:latest
 
 # 2. Install the SDK in your agent project.
-pnpm add @vanteguardlabs/clavenar-ai-sdk @anthropic-ai/sdk
+pnpm add @clavenar/agent-sdk @anthropic-ai/sdk
 
 # 3. Wrap your client. The snippet below catches a deny verdict;
 #    in observe mode every call passes through and you read the
@@ -39,7 +39,7 @@ Then the snippet that catches a deny:
 
 ```ts
 import Anthropic from '@anthropic-ai/sdk';
-import { clavenarWrap, ClavenarDenied } from '@vanteguardlabs/clavenar-ai-sdk';
+import { clavenarWrap, ClavenarDenied } from '@clavenar/agent-sdk';
 
 const client = clavenarWrap(new Anthropic(), {
   endpoint: 'http://localhost:8088',         // clavenar-lite ingress
@@ -69,7 +69,7 @@ Same wrap, same options — the SDK auto-detects the client shape:
 
 ```ts
 import OpenAI from 'openai';
-import { clavenarWrap, ClavenarDenied } from '@vanteguardlabs/clavenar-ai-sdk';
+import { clavenarWrap, ClavenarDenied } from '@clavenar/agent-sdk';
 
 const client = clavenarWrap(new OpenAI(), {
   endpoint: 'http://localhost:8088',
@@ -142,8 +142,8 @@ verdicts.
 ## Install
 
 ```sh
-pnpm add @vanteguardlabs/clavenar-ai-sdk @anthropic-ai/sdk     # Anthropic
-pnpm add @vanteguardlabs/clavenar-ai-sdk openai                # OpenAI
+pnpm add @clavenar/agent-sdk @anthropic-ai/sdk     # Anthropic
+pnpm add @clavenar/agent-sdk openai                # OpenAI
 ```
 
 `@anthropic-ai/sdk` and `openai` are peer dependencies — install

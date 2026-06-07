@@ -1,4 +1,4 @@
-# `@vanteguardlabs/clavenar-ai-sdk` examples
+# `@clavenar/agent-sdk` examples
 
 Recipes that show how to drop clavenar into the canonical agent
 frameworks. Each subdirectory is self-contained: a `run.ts` you can

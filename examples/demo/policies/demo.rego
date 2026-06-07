@@ -1,4 +1,4 @@
-# @vanteguardlabs/clavenar-ai-sdk demo policy.
+# @clavenar/agent-sdk demo policy.
 #
 # Loaded by clavenar-lite via `--policies examples/demo/policies`. Same
 # `clavenar.authz` package as the default governance.rego, so partners

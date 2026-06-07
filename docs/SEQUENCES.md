@@ -1,4 +1,4 @@
-# clavenar-ai-sdk sequence diagrams
+# clavenar-typescript-sdk sequence diagrams
 
 Five sequence diagrams cover the wire-level paths the SDK can take:
 `clavenarWrap` boot + structural client detection, the non-streaming

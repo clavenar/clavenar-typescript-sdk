@@ -2,7 +2,7 @@
 
 ![Three-tier wrap pattern in action](./demo.gif)
 
-End-to-end demonstration of the `@vanteguardlabs/clavenar-ai-sdk` wrap
+End-to-end demonstration of the `@clavenar/agent-sdk` wrap
 pattern. Runs a mocked Anthropic client through `clavenarWrap` and shows
 all three outcomes:
 

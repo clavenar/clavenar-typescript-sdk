@@ -32,7 +32,7 @@ Two integration points:
 ## Run it
 
 ```bash
-npm install ai @ai-sdk/anthropic @vanteguardlabs/clavenar-ai-sdk
+npm install ai @ai-sdk/anthropic @clavenar/agent-sdk
 ANTHROPIC_API_KEY=sk-ant-... node --import tsx run.ts
 ```
 

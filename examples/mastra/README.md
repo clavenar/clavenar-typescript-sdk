@@ -28,7 +28,7 @@ LangChain, or Mastra.
 ## Run it
 
 ```bash
-npm install @mastra/core @vanteguardlabs/clavenar-ai-sdk
+npm install @mastra/core @clavenar/agent-sdk
 node --import tsx run.ts
 ```
 

@@ -1,10 +1,19 @@
 # Changelog
 
-All notable changes to `@vanteguardlabs/clavenar-ai-sdk` are documented here. Format
+All notable changes to `@clavenar/agent-sdk` are documented here. Format
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
-0.x means the public API is still settling — we'll cut 1.0 when the
-shape stabilizes against the first 3 design partners.
+This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+1.0.0 marks the move to the `@clavenar` scope; the public API matches 0.3.0.
+
+## [1.0.0] - 2026-06-07
+
+### Changed
+
+- **Moved to the `@clavenar` npm scope: `@vanteguardlabs/clavenar-ai-sdk`
+  is now `@clavenar/agent-sdk`.** The GitHub repository was renamed to
+  `clavenar-typescript-sdk`. No API changes from 0.3.0 — update your
+  install to `pnpm add @clavenar/agent-sdk` and your import specifier; the
+  exported surface is byte-for-byte identical.
 
 ## [0.3.0] - 2026-05-12
 
@@ -140,6 +149,6 @@ your tool-execution loop runs it.
 - Both `@anthropic-ai/sdk` and `openai` are peer-deps. Install
   whichever you use; the SDK has no hard import on either.
 
-[0.2.1]: https://github.com/clavenar/clavenar-ai-sdk/releases/tag/v0.2.1
-[0.2.0]: https://github.com/clavenar/clavenar-ai-sdk/releases/tag/v0.2.0
-[0.1.0]: https://github.com/clavenar/clavenar-ai-sdk/releases/tag/v0.1.0
+[0.2.1]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.2.1
+[0.2.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.2.0
+[0.1.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.1.0

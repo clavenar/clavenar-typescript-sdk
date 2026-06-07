@@ -21,7 +21,7 @@ Two equally-valid integration shapes:
 ## Run it
 
 ```bash
-npm install langchain @langchain/core @vanteguardlabs/clavenar-ai-sdk
+npm install langchain @langchain/core @clavenar/agent-sdk
 node --import tsx run.ts
 ```
 

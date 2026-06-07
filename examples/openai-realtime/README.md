@@ -8,7 +8,7 @@ each `response.function_call_arguments.done` event through
 ## Run it
 
 ```bash
-npm install ws @vanteguardlabs/clavenar-ai-sdk
+npm install ws @clavenar/agent-sdk
 node --import tsx run.ts
 ```
 
