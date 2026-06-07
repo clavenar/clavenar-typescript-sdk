@@ -261,7 +261,7 @@ This SDK is a faithful client of that contract — if you observe a
 divergence, file the bug against the spec first.
 
 The Python sibling at
-[`clavenar-ai-py`](https://github.com/clavenar/clavenar-ai-py)
+[`clavenar-python-sdk`](https://github.com/clavenar/clavenar-python-sdk)
 implements the same wire contract with parity guarantees.
 
 ## License

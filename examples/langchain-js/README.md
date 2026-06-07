@@ -25,5 +25,5 @@ npm install langchain @langchain/core @clavenar/agent-sdk
 node --import tsx run.ts
 ```
 
-Python equivalent (using `clavenar-ai`): see
-`clavenar-ai-py/examples/langchain.py`.
+Python equivalent (using `clavenar-agent-sdk`): see
+`clavenar-python-sdk/examples/langchain.py`.

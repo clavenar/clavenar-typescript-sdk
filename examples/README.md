@@ -17,9 +17,9 @@ points at the load-bearing pattern in 30 seconds.
 | [`openai-realtime/`](./openai-realtime) | Inspect tool calls a Realtime websocket emits. `isRealtimeFunctionCallDone` + `inspectRealtimeFunctionCall` plug into your WS message pump. |
 
 Python equivalents (using
-[`clavenar-ai`](https://pypi.org/project/clavenar-ai) instead of this
+[`clavenar-agent-sdk`](https://pypi.org/project/clavenar-agent-sdk) instead of this
 TypeScript SDK) live in
-[`clavenar-ai-py/examples/`](../../clavenar-ai-py/examples):
+[`clavenar-python-sdk/examples/`](../../clavenar-python-sdk/examples):
 
 - `basic_anthropic.py`, `sync_openai.py`, `streaming_anthropic.py`
 - `langchain_recipe.py`
