@@ -112,9 +112,13 @@ try {
 ```
 
 Same shape with OpenAI's `chat.completions.create({ stream: true })`.
-For Anthropic's `messages.stream()` helper, use
-`messages.create({ stream: true })` instead until that helper's
-wrap lands in a follow-up.
+The provider SDKs' `.stream()` convenience helpers
+(`messages.stream()`, `chat.completions.stream()`) are **blocked** by
+the wrapper: their rich event interfaces can't be wrapped faithfully,
+and tool calls made through them would bypass inspection entirely.
+Calling one throws `ClavenarConfigError` pointing at
+`create({ stream: true })`; set `allowUninspectedStream: true` only if
+you explicitly accept uninspected streaming.
 
 ## What it does
 

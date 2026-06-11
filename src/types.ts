@@ -17,6 +17,15 @@ export interface ClavenarOptions {
   /** Override the global fetch (testing). */
   fetch?: typeof fetch;
   /**
+   * DANGEROUS: allow the provider SDK's `.stream()` helper
+   * (`messages.stream()` / `chat.completions.stream()`) to pass
+   * through UNINSPECTED. Off by default — the helper's rich event
+   * interface can't be wrapped faithfully, so tool calls made through
+   * it would bypass clavenar entirely. Prefer
+   * `create({ stream: true })`, which is fully inspected.
+   */
+  allowUninspectedStream?: boolean;
+  /**
    * Called once per inspected tool_use with the verdict clavenar
    * returned. Fires before any deny→throw translation, so callers
    * can record observe-mode telemetry without changing the throw

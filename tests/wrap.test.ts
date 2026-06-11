@@ -61,6 +61,29 @@ describe('clavenarWrap (config validation)', () => {
   });
 });
 
+describe('clavenarWrap (stream helper guard)', () => {
+  it('blocks messages.stream() by default with a config error', () => {
+    const client = {
+      messages: { create: vi.fn(), stream: vi.fn() },
+    };
+    const wrapped = clavenarWrap(client, { endpoint: 'http://w' });
+    expect(() => (wrapped.messages as { stream: () => unknown }).stream()).toThrow(
+      ClavenarConfigError,
+    );
+    expect(client.messages.stream).not.toHaveBeenCalled();
+  });
+
+  it('allowUninspectedStream passes the helper through untouched', () => {
+    const stream = vi.fn().mockReturnValue('raw-stream');
+    const client = { messages: { create: vi.fn(), stream } };
+    const wrapped = clavenarWrap(client, {
+      endpoint: 'http://w',
+      allowUninspectedStream: true,
+    });
+    expect((wrapped.messages as { stream: () => unknown }).stream()).toBe('raw-stream');
+  });
+});
+
 describe('clavenarWrap (interception)', () => {
   it('passes through messages without tool_use unchanged', async () => {
     const message = makeMessage([{ type: 'text', text: 'hi' }]);

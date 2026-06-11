@@ -86,9 +86,29 @@ function detectClient(client: unknown): ClientKind {
   );
 }
 
+/** Refuse the un-wrappable `.stream()` helpers loudly instead of
+ * letting tool calls slip past inspection (the SDK's whole value is
+ * "every tool call inspected"). `create({ stream: true })` is the
+ * inspected path; `allowUninspectedStream: true` is the explicit,
+ * dangerous opt-out. */
+function uninspectedStreamGuard(helper: string, opts: ClavenarOptions): unknown | null {
+  if (opts.allowUninspectedStream) return null;
+  return (..._args: unknown[]): never => {
+    throw new ClavenarConfigError(
+      `clavenarWrap: ${helper} bypasses clavenar inspection and is blocked. ` +
+        `Use create({ stream: true }) (inspected), or set allowUninspectedStream: true ` +
+        `to explicitly accept uninspected streaming.`,
+    );
+  };
+}
+
 function wrapAnthropic(client: AnthropicLike, opts: ClavenarOptions): AnthropicLike {
   const messagesProxy = new Proxy(client.messages, {
     get(target, prop, receiver) {
+      if (prop === 'stream') {
+        const guard = uninspectedStreamGuard('messages.stream()', opts);
+        if (guard) return guard;
+      }
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
       return async (...args: unknown[]): Promise<AnthropicMessage | AsyncIterable<AnthropicMessageStreamEvent>> => {
         const result = await Reflect.apply(target.create, target, args);
@@ -112,6 +132,10 @@ function wrapAnthropic(client: AnthropicLike, opts: ClavenarOptions): AnthropicL
 function wrapOpenAIChat(client: OpenAIChatLike, opts: ClavenarOptions): OpenAIChatLike {
   const completionsProxy = new Proxy(client.chat.completions, {
     get(target, prop, receiver) {
+      if (prop === 'stream') {
+        const guard = uninspectedStreamGuard('chat.completions.stream()', opts);
+        if (guard) return guard;
+      }
       if (prop !== 'create') return Reflect.get(target, prop, receiver);
       return async (...args: unknown[]): Promise<OpenAIChatCompletion | AsyncIterable<OpenAIChatCompletionChunk>> => {
         const result = await Reflect.apply(target.create, target, args);
