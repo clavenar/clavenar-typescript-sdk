@@ -59,6 +59,39 @@ export interface ClavenarOptions {
    * with 100ms base delay. Set `maxAttempts: 1` to disable retries.
    */
   retry?: ClavenarRetryOptions;
+  /**
+   * Developer mode: when a tool call is denied, render the gateway's
+   * verbose-verdict `detail` breakdown (per-detector scores, degraded
+   * lanes, matched reasons, correlation id) to stderr before throwing.
+   * Off by default. The breakdown is only present when the gateway runs
+   * with `CLAVENAR_PROXY_VERBOSE_VERDICTS=true` (Lite `--verbose-verdicts`);
+   * otherwise a hint to enable it is printed. Dev/staging only — detailed
+   * denials are an attacker oracle.
+   */
+  devMode?: boolean;
+}
+
+/**
+ * One detector's contribution to a verbose-verdict deny. `score` is the
+ * numeric signal in `[0, 1]`; `flagged` is the boolean verdict on the
+ * boolean lanes (`injection` / `malicious_code` / `compromised_package`)
+ * and absent on the numeric lanes (`persona_drift` / `sequence_escalation`),
+ * where `score` is the value to read.
+ */
+export interface ClavenarDetectorScore {
+  detector: string;
+  score: number;
+  flagged?: boolean;
+}
+
+/**
+ * The verbose-verdict `detail` object: present on a deny/pend body only
+ * when the gateway runs with `CLAVENAR_PROXY_VERBOSE_VERDICTS=true`.
+ */
+export interface ClavenarVerdictDetail {
+  detectors: ClavenarDetectorScore[];
+  /** Detector lanes that served a fallback verdict (omitted when none). */
+  degraded?: string[];
 }
 
 /** Context passed to {@link ClavenarOptions.onVerdict}. */
@@ -120,6 +153,11 @@ export interface ClavenarDenyResponse {
   layer?: string;
   /** Proxy-stamped join key for the audit row, when in the body. */
   correlation_id?: string;
+  /**
+   * Per-detector verdict breakdown — present only under the gateway's
+   * verbose-verdict opt-in (`CLAVENAR_PROXY_VERBOSE_VERDICTS=true`).
+   */
+  detail?: ClavenarVerdictDetail;
 }
 
 /**

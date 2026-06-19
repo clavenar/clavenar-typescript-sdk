@@ -120,6 +120,48 @@ Calling one throws `ClavenarConfigError` pointing at
 `create({ stream: true })`; set `allowUninspectedStream: true` only if
 you explicitly accept uninspected streaming.
 
+## Debugging a denial
+
+When a tool call is denied you get a `ClavenarDenied` with `reasons`,
+`layer`, and `correlationId`. To see *which detector* fired, run the
+gateway with `CLAVENAR_PROXY_VERBOSE_VERDICTS=true` (Lite:
+`--verbose-verdicts`) — the deny envelope then carries a per-detector
+`detail` breakdown, exposed as `err.detail` and rendered to stderr when
+you set `devMode: true`:
+
+```ts
+const client = clavenarWrap(anthropic, {
+  endpoint: 'https://clavenar.internal',
+  devMode: true, // dev/staging only — detailed denials are an attacker oracle
+});
+// On a deny, the SDK prints a panel to stderr:
+//   ━━ clavenar denied: send_email ━━
+//     layer=brain  intent=Exfiltration  correlation=abc-123
+//     reasons:
+//       - indirect prompt injection
+//     detectors:
+//       persona_drift         0.12
+//       injection             0.91  ⚠ flagged
+//     degraded: injection
+```
+
+Programmatic access (no `devMode` needed):
+
+```ts
+try {
+  await client.messages.create(/* … */);
+} catch (e) {
+  if (e instanceof ClavenarDenied && e.detail) {
+    const fired = e.detail.detectors.filter((d) => d.flagged || d.score >= 0.5);
+    console.log('fired detectors:', fired);
+  }
+}
+```
+
+`detail` is present only when the gateway opts in; without it the panel
+prints a hint to enable verbose verdicts. `renderDenyPanel(err)` is
+exported if you want the string without writing to stderr.
+
 ## What it does
 
 `clavenarWrap` is a transparent `Proxy` around your model client.

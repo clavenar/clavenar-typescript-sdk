@@ -12,9 +12,12 @@ export type {
   ClavenarDenyResponse,
   ClavenarVerdict,
   ClavenarVerdictContext,
+  ClavenarDetectorScore,
+  ClavenarVerdictDetail,
   NormalizedToolCall,
   ClavenarRetryOptions,
 } from './types.js';
+export { renderDenyPanel } from './devmode.js';
 export type {
   AnthropicLike,
   AnthropicMessage,

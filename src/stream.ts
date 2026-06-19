@@ -22,6 +22,7 @@ import {
   ClavenarPending,
   ClavenarTransportError,
 } from './errors.js';
+import { emitDenyPanel } from './devmode.js';
 import {
   isContentBlockStart,
   isContentBlockDelta,
@@ -262,14 +263,17 @@ async function processVerdict(
   }
   if (!enforce) return;
   if (verdict.kind === 'deny') {
-    throw new ClavenarDenied({
+    const denied = new ClavenarDenied({
       toolName: call.name,
       reasons: verdict.payload.reasons,
       reviewReasons: verdict.payload.review_reasons,
       intentCategory: verdict.payload.intent_category,
       ...(verdict.payload.layer !== undefined && { layer: verdict.payload.layer }),
       ...(verdict.correlationId !== undefined && { correlationId: verdict.correlationId }),
+      ...(verdict.payload.detail !== undefined && { detail: verdict.payload.detail }),
     });
+    if (opts.devMode) emitDenyPanel(denied);
+    throw denied;
   }
   if (verdict.kind === 'pending') {
     throw new ClavenarPending({

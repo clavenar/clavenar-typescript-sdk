@@ -23,6 +23,12 @@ export class ClavenarDenied extends Error {
    * header (older builds, partner-deployed gateways).
    */
   readonly correlationId: string | undefined;
+  /**
+   * Per-detector verdict breakdown, when the gateway runs with
+   * verbose-verdicts on. Undefined otherwise. Inspect this (or enable
+   * {@link ClavenarOptions.devMode}) to see which detector fired.
+   */
+  readonly detail: ClavenarVerdictDetail | undefined;
 
   constructor(args: {
     toolName: string;
@@ -31,6 +37,7 @@ export class ClavenarDenied extends Error {
     intentCategory: string;
     layer?: string;
     correlationId?: string;
+    detail?: ClavenarVerdictDetail;
   }) {
     super(`clavenar denied tool "${args.toolName}": ${args.reasons.join(' | ')}`);
     this.toolName = args.toolName;
@@ -39,10 +46,15 @@ export class ClavenarDenied extends Error {
     this.intentCategory = args.intentCategory;
     this.layer = args.layer;
     this.correlationId = args.correlationId;
+    this.detail = args.detail;
   }
 }
 
-import type { ClavenarPendingView, ClavenarResolveOptions } from './types.js';
+import type {
+  ClavenarPendingView,
+  ClavenarResolveOptions,
+  ClavenarVerdictDetail,
+} from './types.js';
 
 /**
  * Thrown when clavenar parks a tool call for human review (the 202

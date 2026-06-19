@@ -298,7 +298,36 @@ async function parseDenyBody(response: Response): Promise<ClavenarDenyResponse> 
   if (typeof r['verdict'] === 'string') deny.verdict = r['verdict'];
   if (typeof r['layer'] === 'string') deny.layer = r['layer'];
   if (typeof r['correlation_id'] === 'string') deny.correlation_id = r['correlation_id'];
+  const detail = parseVerdictDetail(r['detail']);
+  if (detail) deny.detail = detail;
   return deny;
+}
+
+/**
+ * Parse the optional verbose-verdict `detail` object. Lenient — a
+ * malformed or absent block just yields `undefined` (the gateway omits
+ * it unless `CLAVENAR_PROXY_VERBOSE_VERDICTS=true`).
+ */
+function parseVerdictDetail(raw: unknown): import('./types.js').ClavenarVerdictDetail | undefined {
+  if (raw == null || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj['detectors'])) return undefined;
+  const detectors = (obj['detectors'] as unknown[])
+    .filter((d): d is Record<string, unknown> => d != null && typeof d === 'object')
+    .filter((d) => typeof d['detector'] === 'string' && typeof d['score'] === 'number')
+    .map((d) => {
+      const out: import('./types.js').ClavenarDetectorScore = {
+        detector: d['detector'] as string,
+        score: d['score'] as number,
+      };
+      if (typeof d['flagged'] === 'boolean') out.flagged = d['flagged'];
+      return out;
+    });
+  const detail: import('./types.js').ClavenarVerdictDetail = { detectors };
+  if (Array.isArray(obj['degraded'])) {
+    detail.degraded = (obj['degraded'] as unknown[]).filter((s): s is string => typeof s === 'string');
+  }
+  return detail;
 }
 
 // A deny envelope is anything with a string `error` code; the rest of
