@@ -16,7 +16,7 @@ all three outcomes:
 
 | File | What it does |
 |---|---|
-| `run.ts` | The demo script. Two scenarios, prints verdict + result. |
+| `run.ts` | The demo script. Three scenarios, prints verdict + result. |
 | `policies/demo.rego` | Custom clavenar-lite policy. Hard-denies `delete_user`. |
 | `upstream-stub.mjs` | Throwaway Node HTTP server. Returns 200 on every POST so allowed requests get a clean forward instead of a 502. |
 | `start.sh` | Boots `upstream-stub` + `clavenar-lite` + runs `run.ts`. Tears everything down on exit. |
@@ -82,7 +82,7 @@ via the `onVerdict` callback, no throw:
 OBSERVE=1 pnpm demo
 ```
 
-Same two scenarios, but `delete_user` no longer throws — the
+Same three scenarios, but `delete_user` no longer throws — the
 denied call lands as a `[DENY]` verdict in the callback and the
 demo continues. Partners deploy in this mode first, count
 would-have-denies, then flip to enforce when the verdicts settle.

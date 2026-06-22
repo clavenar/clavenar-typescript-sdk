@@ -208,12 +208,13 @@ pnpm install
 pnpm demo
 ```
 
-See [`examples/demo/`](./examples/demo/) — runs two canned scenarios
+See [`examples/demo/`](./examples/demo/) — runs three canned scenarios
 end-to-end against a local clavenar-lite:
 
 ```
-[1/2] agent: "fetch user 42"        clavenar: [ALLOW]  passes through
-[2/2] agent: "delete user 42"       clavenar: [DENY]   throws ClavenarDenied
+[1/3] agent: "fetch user 42"        clavenar: [ALLOW]  passes through
+[2/3] agent: "delete user 42"       clavenar: [DENY]   throws ClavenarDenied
+[3/3] agent: "transfer $100"        clavenar: [PEND]   throws ClavenarPending
 ```
 
 ## API
@@ -299,7 +300,7 @@ CLAVENAR_E2E_ENDPOINT=http://localhost:8088 CLAVENAR_E2E_TOKEN=... pnpm test
 ## Wire contract
 
 The HTTP shape this SDK speaks against the inspect endpoint
-(`POST /inspect`, the verdict envelope, the pending / resolve
+(`POST /mcp`, the verdict envelope, the pending / resolve
 contract, and the `X-Clavenar-*` header set) is documented in the
 workspace's source of truth:
 [`clavenar-specs/TECH_SPEC.md`](https://github.com/clavenar/clavenar-specs/blob/main/TECH_SPEC.md).

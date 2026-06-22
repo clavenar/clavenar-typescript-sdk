@@ -5,6 +5,19 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 1.0.0 marks the move to the `@clavenar` scope; the public API matches 0.3.0.
 
+## [1.1.0] - 2026-06-08
+
+### Added
+
+- **Dev-mode deny rendering.** With `devMode: true`, a `ClavenarDenied`
+  carrying a verbose `detail` breakdown prints a per-detector panel to
+  stderr (layer, intent, correlation, fired detectors). The panel string
+  is also exported as `renderDenyPanel(err)` for callers that want it
+  without writing to stderr. `detail` is populated only when the gateway
+  runs with `CLAVENAR_PROXY_VERBOSE_VERDICTS=true` (Lite:
+  `--verbose-verdicts`); detailed denials are an attacker oracle, so keep
+  `devMode` to dev/staging.
+
 ## [1.0.0] - 2026-06-07
 
 ### Changed
@@ -149,6 +162,9 @@ your tool-execution loop runs it.
 - Both `@anthropic-ai/sdk` and `openai` are peer-deps. Install
   whichever you use; the SDK has no hard import on either.
 
+[1.1.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v1.1.0
+[1.0.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v1.0.0
+[0.3.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.3.0
 [0.2.1]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.2.1
 [0.2.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/clavenar/clavenar-typescript-sdk/releases/tag/v0.1.0
