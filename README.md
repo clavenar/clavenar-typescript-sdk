@@ -285,12 +285,12 @@ for the server side.
 ```sh
 pnpm install
 pnpm build       # tsup → dist/{index.mjs, index.cjs, index.d.ts}
-pnpm test        # vitest, 65 unit tests
+pnpm test        # vitest, 103 unit tests
 pnpm typecheck   # tsc --noEmit
 pnpm demo        # full e2e against local clavenar-lite
 ```
 
-End-to-end tests (5 cases against live clavenar-lite) skip unless
+End-to-end tests (7 cases against live clavenar-lite) skip unless
 `CLAVENAR_E2E_ENDPOINT` is set:
 
 ```sh

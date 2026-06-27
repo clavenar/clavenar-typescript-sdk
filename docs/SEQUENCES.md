@@ -190,7 +190,7 @@ sequenceDiagram
         end
         Gen-->>Caller: yield chunk (only reached if no enforce throw fired)
     end
-    Note over Gen,Caller: Anthropic content_block_stop path is parallel — same accumulate-then-inspect-before-yield logic —<br/>see wrapAnthropicStream in src/stream.ts
+    Note over Gen,Caller: Anthropic's content_block_stop path shares the accumulate-then-inspect-before-yield gating, but inspects SERIALLY —<br/>one inspectAndMaybeThrow per content_block_stop (a stop closes exactly one tool_use), with no Promise.all batch.<br/>The concurrent inspectChoiceBatch above is unique to wrapOpenAIChatStream, where one choice can carry several tool_calls. See wrapAnthropicStream in src/stream.ts.
 ```
 
 ## 4. `ClavenarPending.resolve` — poll until decided, terminal vs transient errors
