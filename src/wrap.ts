@@ -94,7 +94,7 @@ function detectClient(client: unknown): ClientKind {
  * dangerous opt-out. */
 function uninspectedStreamGuard(helper: string, opts: ClavenarOptions): unknown | null {
   if (opts.allowUninspectedStream) return null;
-  return (..._args: unknown[]): never => {
+  return (): never => {
     throw new ClavenarConfigError(
       `clavenarWrap: ${helper} bypasses clavenar inspection and is blocked. ` +
         `Use create({ stream: true }) (inspected), or set allowUninspectedStream: true ` +
