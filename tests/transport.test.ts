@@ -64,6 +64,54 @@ describe('inspectToolUse', () => {
     }
   });
 
+  it('returns rate_limited with retry_after_secs on 429', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      fakeResponse(429, {
+        verdict: 'rate_limited',
+        layer: 'proxy',
+        error: 'rate_limited',
+        reasons: ['agent request velocity exceeded'],
+        correlation_id: 'c-429',
+        retry_after_secs: 17,
+      }),
+    );
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict.kind).toBe('rate_limited');
+    if (verdict.kind === 'rate_limited') {
+      expect(verdict.payload.verdict).toBe('rate_limited');
+      expect(verdict.payload.retry_after_secs).toBe(17);
+      expect(verdict.payload.layer).toBe('proxy');
+      expect(verdict.correlationId).toBe('c-429');
+    }
+    // A 429 is a verdict, not a transient failure — exactly one attempt.
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns quota_exceeded without retry_after_secs on 429', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      fakeResponse(429, {
+        verdict: 'quota_exceeded',
+        layer: 'proxy',
+        error: 'quota_exceeded',
+        reasons: ['tenant monthly spend cap reached'],
+      }),
+    );
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict.kind).toBe('rate_limited');
+    if (verdict.kind === 'rate_limited') {
+      expect(verdict.payload.verdict).toBe('quota_exceeded');
+      expect(verdict.payload.retry_after_secs).toBeUndefined();
+    }
+  });
+
+  it('throws ClavenarTransportError on malformed 429 body', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(429, { wrong: 'shape' }));
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'ClavenarTransportError',
+      status: 429,
+    });
+  });
+
   it('throws ClavenarTransportError on 401', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(401, 'missing or invalid bearer token'));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({

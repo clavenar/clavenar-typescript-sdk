@@ -3,6 +3,7 @@ export { inspectToolUse } from './transport.js';
 export {
   ClavenarDenied,
   ClavenarPending,
+  ClavenarRateLimited,
   ClavenarConfigError,
   ClavenarTransportError,
 } from './errors.js';
@@ -10,6 +11,7 @@ export type {
   ClavenarOptions,
   ClavenarInspectRequest,
   ClavenarDenyResponse,
+  ClavenarRateLimitResponse,
   ClavenarVerdict,
   ClavenarVerdictContext,
   ClavenarDetectorScore,

@@ -20,6 +20,7 @@ import {
   ClavenarConfigError,
   ClavenarDenied,
   ClavenarPending,
+  ClavenarRateLimited,
   ClavenarTransportError,
 } from './errors.js';
 import { emitDenyPanel } from './devmode.js';
@@ -281,6 +282,18 @@ async function processVerdict(
       correlationId: verdict.correlationId,
       reviewReasons: verdict.reviewReasons,
       pollOnce: () => pollPendingOnce(verdict.correlationId, opts),
+    });
+  }
+  if (verdict.kind === 'rate_limited') {
+    throw new ClavenarRateLimited({
+      toolName: call.name,
+      code: verdict.payload.verdict,
+      reasons: verdict.payload.reasons,
+      ...(verdict.payload.retry_after_secs !== undefined && {
+        retryAfterSecs: verdict.payload.retry_after_secs,
+      }),
+      ...(verdict.payload.layer !== undefined && { layer: verdict.payload.layer }),
+      ...(verdict.correlationId !== undefined && { correlationId: verdict.correlationId }),
     });
   }
 }

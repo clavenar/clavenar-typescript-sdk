@@ -171,7 +171,23 @@ export interface ClavenarDenyResponse {
 export type ClavenarVerdict =
   | { kind: 'allow'; correlationId?: string }
   | { kind: 'deny'; payload: ClavenarDenyResponse; correlationId?: string }
-  | { kind: 'pending'; correlationId: string; reviewReasons: string[] };
+  | { kind: 'pending'; correlationId: string; reviewReasons: string[] }
+  | { kind: 'rate_limited'; payload: ClavenarRateLimitResponse; correlationId?: string };
+
+/**
+ * Wire shape of the 429 error envelope (spec §"Agent-facing error
+ * envelope"): `rate_limited` is the request-velocity gate,
+ * `quota_exceeded` the per-tenant spend gate. `retry_after_secs` is
+ * only set on `rate_limited`.
+ */
+export interface ClavenarRateLimitResponse {
+  verdict: 'rate_limited' | 'quota_exceeded';
+  error: string;
+  reasons: string[];
+  retry_after_secs?: number;
+  layer?: string;
+  correlation_id?: string;
+}
 
 /**
  * Wire shape of clavenar-lite's 202 Accepted body (yellow tier — the

@@ -166,6 +166,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Thrown when clavenar returns a 429 for a tool call — the request was
+ * rejected *before* evaluation, by the request-velocity gate
+ * (`rate_limited`) or the per-tenant spend gate (`quota_exceeded`).
+ * Not retried by the transport: honor {@link retryAfterSecs} (set on
+ * `rate_limited` only) or fail the operation.
+ */
+export class ClavenarRateLimited extends Error {
+  override readonly name = 'ClavenarRateLimited';
+  readonly toolName: string;
+  readonly code: 'rate_limited' | 'quota_exceeded';
+  readonly reasons: string[];
+  /** Seconds to wait before retrying; undefined on `quota_exceeded`. */
+  readonly retryAfterSecs: number | undefined;
+  readonly layer: string | undefined;
+  readonly correlationId: string | undefined;
+
+  constructor(args: {
+    toolName: string;
+    code: 'rate_limited' | 'quota_exceeded';
+    reasons: string[];
+    retryAfterSecs?: number;
+    layer?: string;
+    correlationId?: string;
+  }) {
+    super(
+      `clavenar ${args.code} for tool "${args.toolName}"${
+        args.retryAfterSecs !== undefined ? ` (retry after ${args.retryAfterSecs}s)` : ''
+      }`,
+    );
+    this.toolName = args.toolName;
+    this.code = args.code;
+    this.reasons = args.reasons;
+    this.retryAfterSecs = args.retryAfterSecs;
+    this.layer = args.layer;
+    this.correlationId = args.correlationId;
+  }
+}
+
 /** Thrown for malformed config — bad endpoint URL, missing client, etc. */
 export class ClavenarConfigError extends Error {
   override readonly name = 'ClavenarConfigError';

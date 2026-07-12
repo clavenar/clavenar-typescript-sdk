@@ -5,6 +5,19 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 1.0.0 marks the move to the `@clavenar` scope; the public API matches 0.3.0.
 
+## [Unreleased]
+
+### Added
+
+- 429 rate-limit verdicts: the transport now parses the spec's
+  `rate_limited` / `quota_exceeded` envelope instead of collapsing a
+  429 into a generic `ClavenarTransportError`. Enforce mode throws the
+  new `ClavenarRateLimited` (carrying `code`, `retryAfterSecs`,
+  `reasons`, `correlationId`); observe mode surfaces the new
+  `{ kind: 'rate_limited' }` verdict via `onVerdict` and passes the
+  response through. 429s are never auto-retried — honor
+  `retryAfterSecs` in the caller.
+
 ## [1.1.0] - 2026-06-08
 
 ### Added

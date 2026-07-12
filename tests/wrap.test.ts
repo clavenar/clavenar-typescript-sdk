@@ -3,6 +3,7 @@ import {
   clavenarWrap,
   ClavenarConfigError,
   ClavenarDenied,
+  ClavenarRateLimited,
   ClavenarTransportError,
 } from '../src/index.js';
 import type { AnthropicMessage } from '../src/anthropic.js';
@@ -194,6 +195,79 @@ describe('clavenarWrap (interception)', () => {
     );
     await wrapped.messages.create({});
     expect(callbackResolved).toBe(true);
+  });
+});
+
+describe('clavenarWrap (429 rate-limit verdicts)', () => {
+  function rateLimitResponse(extra: Record<string, unknown> = {}): Response {
+    return new Response(
+      JSON.stringify({
+        verdict: 'rate_limited',
+        layer: 'proxy',
+        error: 'rate_limited',
+        reasons: ['agent request velocity exceeded'],
+        retry_after_secs: 30,
+        ...extra,
+      }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+  const message = makeMessage([
+    { type: 'tool_use', id: 'toolu_x', name: 'fetch_user', input: {} },
+  ]);
+
+  it('enforce: throws ClavenarRateLimited carrying retry_after_secs', async () => {
+    const fetch = vi.fn().mockResolvedValue(rateLimitResponse());
+    const wrapped = clavenarWrap(
+      { messages: { create: async () => message } },
+      { endpoint: 'http://w', fetch },
+    );
+    try {
+      await wrapped.messages.create({});
+      expect.fail('expected clavenarWrap to throw ClavenarRateLimited');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ClavenarRateLimited);
+      const limited = e as ClavenarRateLimited;
+      expect(limited.toolName).toBe('fetch_user');
+      expect(limited.code).toBe('rate_limited');
+      expect(limited.retryAfterSecs).toBe(30);
+      expect(limited.layer).toBe('proxy');
+    }
+  });
+
+  it('enforce: quota_exceeded surfaces as code without retryAfterSecs', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      rateLimitResponse({ verdict: 'quota_exceeded', error: 'quota_exceeded', retry_after_secs: undefined }),
+    );
+    const wrapped = clavenarWrap(
+      { messages: { create: async () => message } },
+      { endpoint: 'http://w', fetch },
+    );
+    await expect(wrapped.messages.create({})).rejects.toMatchObject({
+      name: 'ClavenarRateLimited',
+      code: 'quota_exceeded',
+      retryAfterSecs: undefined,
+    });
+  });
+
+  it('observe: no throw, verdict surfaces via onVerdict', async () => {
+    const fetch = vi.fn().mockResolvedValue(rateLimitResponse());
+    const verdicts: ClavenarVerdict[] = [];
+    const wrapped = clavenarWrap(
+      { messages: { create: async () => message } },
+      {
+        endpoint: 'http://w',
+        fetch,
+        mode: 'observe',
+        onVerdict: (v) => {
+          verdicts.push(v);
+        },
+      },
+    );
+    const result = await wrapped.messages.create({});
+    expect(result).toBe(message);
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]!.kind).toBe('rate_limited');
   });
 });
 

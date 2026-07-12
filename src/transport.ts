@@ -26,10 +26,11 @@ const CORRELATION_HEADER = 'x-clavenar-correlation-id';
  *
  * Retry semantics: network failures and 5xx responses retry up to
  * `opts.retry.maxAttempts` (default 3) with jittered exponential
- * backoff. 200 and 403 are verdicts and never retry. Other 4xx never
- * retry — those are config errors that won't fix themselves. After
- * the final attempt fails, the last {@link ClavenarTransportError} is
- * thrown.
+ * backoff. 200, 403, and 429 are verdicts and never retry (429
+ * carries `retry_after_secs` for the caller to honor). Other 4xx
+ * never retry — those are config errors that won't fix themselves.
+ * After the final attempt fails, the last
+ * {@link ClavenarTransportError} is thrown.
  *
  * Correlation: when clavenar-lite sets `X-Clavenar-Correlation-Id` on
  * the response, we surface it on the verdict so callers can look
@@ -130,6 +131,14 @@ async function singleAttempt(
       );
     }
     return { kind: 'pending', correlationId: corr, reviewReasons: payload.review_reasons };
+  }
+
+  if (response.status === 429) {
+    const payload = await parseRateLimitBody(response);
+    const corr = correlationId ?? payload.correlation_id;
+    return corr === undefined
+      ? { kind: 'rate_limited', payload }
+      : { kind: 'rate_limited', payload, correlationId: corr };
   }
 
   const text = await safeReadText(response);
@@ -336,6 +345,41 @@ function isDenyResponse(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
   return typeof r['error'] === 'string';
+}
+
+/**
+ * Parse the 429 envelope. Lenient like the deny parser: only the
+ * string `error` code is required; the verdict falls back to
+ * `rate_limited` when the body omits it (both codes ride HTTP 429).
+ */
+async function parseRateLimitBody(
+  response: Response,
+): Promise<import('./types.js').ClavenarRateLimitResponse> {
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new ClavenarTransportError(`clavenar 429 with unparseable body: ${reason}`, 429);
+  }
+  if (!isDenyResponse(parsed)) {
+    throw new ClavenarTransportError(
+      `clavenar 429 with unexpected body shape: ${JSON.stringify(parsed)}`,
+      429,
+    );
+  }
+  const r = parsed as Record<string, unknown>;
+  const out: import('./types.js').ClavenarRateLimitResponse = {
+    verdict: r['verdict'] === 'quota_exceeded' ? 'quota_exceeded' : 'rate_limited',
+    error: r['error'] as string,
+    reasons: Array.isArray(r['reasons'])
+      ? (r['reasons'] as unknown[]).filter((s): s is string => typeof s === 'string')
+      : [],
+  };
+  if (typeof r['retry_after_secs'] === 'number') out.retry_after_secs = r['retry_after_secs'];
+  if (typeof r['layer'] === 'string') out.layer = r['layer'];
+  if (typeof r['correlation_id'] === 'string') out.correlation_id = r['correlation_id'];
+  return out;
 }
 
 async function safeReadText(response: Response): Promise<string> {
