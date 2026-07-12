@@ -35,3 +35,34 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  # Same posture as the Go/Java/.NET siblings, which all scan in the PR
+  # path — this package ships to npm and had no vuln/SBOM gate here.
+  supply-chain:
+    name: audit + SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Runtime deps gate the build; dev-only advisories surface in the
+      # log without failing it (--prod scopes the tree).
+      - run: pnpm audit --prod --audit-level high
+
+      - name: generate CycloneDX SBOM
+        run: npx --yes @cyclonedx/cdxgen@11 -t js -o bom.json .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: bom.json
