@@ -39,6 +39,8 @@ Coding standards (TypeScript):
 - ESM with explicit `.js` specifiers on relative imports (e.g. `./wrap.js`) — keep the extension.
 - ESLint flat config = `js.recommended` + `typescript-eslint` recommended + `eslint-config-prettier` last; `lint` must be clean in CI. `@typescript-eslint/no-explicit-any` is `warn` (boundary narrowing of provider `unknown` is intentional) — don't introduce new `any` without cause.
 - Tests colocated in `tests/` as `*.test.ts`; keep e2e env-gated so the suite runs offline.
+- After adding or updating a feature, also update the relevant `MANUAL_TESTS*`
+  file(s) when needed.
 - Commit subjects must start with a lowercase letter.
 
 ## Pointers
