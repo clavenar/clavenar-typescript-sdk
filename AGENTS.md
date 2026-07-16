@@ -10,6 +10,9 @@ pnpm lint         # eslint .
 pnpm typecheck    # tsc --noEmit
 ```
 CI (`.github/workflows/ci.yml`) runs `install → lint → typecheck → test → build` on node 18/20/22. `prepublishOnly` reruns the full chain.
+CI also builds a clean `clavenar-lite` checkout and runs the env-gated E2E
+suite against that live backend, including deny, authentication, and pending
+approve/deny round trips.
 Run: library, no binary. Public entry `clavenarWrap(client, opts)`. No listener — it POSTs each tool call to the configured clavenar-lite ingress (`POST {endpoint}/mcp`; lite default `:8088`). E2E tests POST to `CLAVENAR_E2E_ENDPOINT`.
 
 ## Layout

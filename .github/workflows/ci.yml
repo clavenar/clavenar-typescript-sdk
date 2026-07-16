@@ -36,6 +36,55 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  live-backend:
+    name: live clavenar-lite backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: clavenar/clavenar-lite
+          path: clavenar-lite
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: build live backend
+        run: cargo build --locked --manifest-path clavenar-lite/Cargo.toml
+
+      - name: run the complete SDK round trip
+        env:
+          CLAVENAR_E2E_ENDPOINT: http://127.0.0.1:8088
+          CLAVENAR_E2E_TOKEN: feature-matrix-agent
+          CLAVENAR_E2E_DECIDE_TOKEN: feature-matrix-operator
+        run: |
+          clavenar-lite/target/debug/clavenar-lite start \
+            --port 8088 \
+            --policies clavenar-lite/policies \
+            --ledger :memory: \
+            --upstream http://127.0.0.1:9 \
+            --token "$CLAVENAR_E2E_TOKEN" \
+            --decide-token "$CLAVENAR_E2E_DECIDE_TOKEN" > /tmp/clavenar-lite.log 2>&1 &
+          backend_pid=$!
+          trap 'kill "$backend_pid" 2>/dev/null || true; cat /tmp/clavenar-lite.log' EXIT
+          for _ in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:8088/readyz >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8088/readyz >/dev/null
+          pnpm test
+
   # Same posture as the Go/Java/.NET siblings, which all scan in the PR
   # path — this package ships to npm and had no vuln/SBOM gate here.
   supply-chain:
