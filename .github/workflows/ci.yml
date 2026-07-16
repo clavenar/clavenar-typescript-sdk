@@ -16,15 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18', '20', '22']
+        node: ['18.20.8', '20.20.2', '22.22.3']
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
-          version: 9
+          version: 9.15.9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -40,22 +40,24 @@ jobs:
     name: live clavenar-lite backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           repository: clavenar/clavenar-lite
           path: clavenar-lite
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: pnpm/action-setup@v4
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
-          version: 9
+          toolchain: 1.97.0
 
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
-          node-version: 22
+          version: 9.15.9
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.3
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -91,17 +93,17 @@ jobs:
     name: audit + SBOM
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           # pnpm 11 uses npm's current bulk-advisory API. Keep the test
           # matrix on pnpm 9 so the published Node 18 floor remains covered.
           version: 11.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 22.22.3
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -111,9 +113,9 @@ jobs:
       - run: pnpm audit --prod --audit-level high
 
       - name: generate CycloneDX SBOM
-        run: npx --yes @cyclonedx/cdxgen@11 -t js -o bom.json .
+        run: npx --yes @cyclonedx/cdxgen@12.7.1 -t js -o bom.json .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom
           path: bom.json
