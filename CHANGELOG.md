@@ -7,6 +7,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-21
+
+### Changed
+
+- Automatic retries are explicitly confined to the side-effect-free decision
+  transport with one stable pre-network idempotency ID. Registered executor
+  failures remain single-attempt, and the shared retry-separation fixture is
+  packaged for cross-language conformance.
+
 ## [1.3.0] - 2026-07-21
 
 ### Changed

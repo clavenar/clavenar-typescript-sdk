@@ -55,8 +55,11 @@ export interface ClavenarOptions {
     ctx: ClavenarVerdictContext,
   ) => void | Promise<void>;
   /**
-   * Retry policy applied per inspection. Defaults to 3 attempts
-   * with 100ms base delay. Set `maxAttempts: 1` to disable retries.
+   * Retry policy applied only to the explicit side-effect-free decision
+   * request. Defaults to 3 attempts with 100ms base delay; every attempt
+   * retains the same pre-network idempotency ID. Registered execution is
+   * outside this loop and is never retried. Set `maxAttempts: 1` to disable
+   * decision retries.
    */
   retry?: ClavenarRetryOptions;
   /**
@@ -246,9 +249,10 @@ export interface ClavenarResolveOptions {
 }
 
 /**
- * Retry policy for transient inspection failures. Network errors and
+ * Retry policy for transient side-effect-free decision failures. Network errors and
  * 5xx responses retry up to `maxAttempts` times with exponential
- * backoff (`baseDelayMs * 2^attempt`, jittered). 4xx (other than
+ * backoff (`baseDelayMs * 2^attempt`, jittered) with one stable request
+ * identity. Effect-capable execution never uses this policy. 4xx (other than
  * 403, which is a verdict) and 200 never retry.
  */
 export interface ClavenarRetryOptions {

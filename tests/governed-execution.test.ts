@@ -125,4 +125,32 @@ describe('governed execution', () => {
     ).rejects.toThrow('store unavailable');
     expect(executor).not.toHaveBeenCalled();
   });
+
+  it('never retries the registered executor after an effect failure', async () => {
+    const executor = vi.fn().mockRejectedValue(new Error('provider response lost'));
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(authorization()), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(
+      executePreparedTool(prepared, {
+        endpoint: 'https://gateway.example',
+        executorId: 'payments-provider',
+        fetch,
+        retry: { maxAttempts: 3, baseDelayMs: 1 },
+        durableStore: {
+          commitIntent: async () => undefined,
+          commitCompletionAndEnqueueReceipt: async () => undefined,
+        },
+        executor,
+        signReceipt: async () => {
+          throw new Error('unreachable');
+        },
+      }),
+    ).rejects.toThrow('provider response lost');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(executor).toHaveBeenCalledTimes(1);
+  });
 });

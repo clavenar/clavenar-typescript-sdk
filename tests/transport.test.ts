@@ -231,6 +231,12 @@ describe('inspectToolUse (retry on transient errors)', () => {
     });
     expect(verdict.kind).toBe('allow');
     expect(fetch).toHaveBeenCalledTimes(2);
+    const attempts = fetch.mock.calls.map((call) => call[1] as RequestInit);
+    const bodies = attempts.map((attempt) => attempt.body as string);
+    const headers = attempts.map((attempt) => attempt.headers as Record<string, string>);
+    expect(new Set(bodies).size).toBe(1);
+    expect(new Set(headers.map((value) => value['x-clavenar-idempotency-id'])).size).toBe(1);
+    expect(headers.every((value) => value['x-clavenar-decision-contract'] === 'clavenar.decision/v1')).toBe(true);
   });
 
   it('retries network-layer fetch rejections', async () => {
