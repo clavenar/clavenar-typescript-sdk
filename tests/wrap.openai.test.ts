@@ -85,10 +85,7 @@ describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
       toolCall('call_a', 'fetch_user', { id: 1 }),
       toolCall('call_b', 'delete_user', { id: 1 }),
     ]);
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(allowResponse())
-      .mockResolvedValueOnce(denyResponse('delete_user'));
+    const fetch = vi.fn().mockResolvedValue(denyResponse('atomic-batch'));
     const create = vi.fn().mockResolvedValue(completion);
 
     const verdicts: Array<[ClavenarVerdict, ClavenarVerdictContext]> = [];
@@ -104,7 +101,7 @@ describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
       },
     );
     const result = await wrapped.chat.completions.create({});
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(verdicts).toHaveLength(2);
     expect(verdicts[0]?.[1].toolUseId).toBe('call_a');
     expect(verdicts[0]?.[1].toolName).toBe('fetch_user');
@@ -131,15 +128,12 @@ describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
     }
   });
 
-  it('inspects all tool_calls in parallel; first deny in order throws', async () => {
+  it('inspects all tool_calls in one atomic decision; first sibling reports deny', async () => {
     const completion = makeCompletion([
       toolCall('call_a', 'drop_table', {}),
       toolCall('call_b', 'fetch_user', {}),
     ]);
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(denyResponse('drop_table'))
-      .mockResolvedValueOnce(allowResponse());
+    const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
     const wrapped = clavenarWrap(
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch },
@@ -151,7 +145,7 @@ describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
       expect(e).toBeInstanceOf(ClavenarDenied);
       expect((e as ClavenarDenied).toolName).toBe('drop_table');
     }
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an unparseable arguments string with ClavenarConfigError', async () => {
@@ -220,15 +214,12 @@ describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
         },
       ],
     };
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(allowResponse())
-      .mockResolvedValueOnce(allowResponse());
+    const fetch = vi.fn().mockResolvedValue(allowResponse());
     const wrapped = clavenarWrap(
       { chat: { completions: { create: async () => completion } } },
       { endpoint: 'http://w', fetch },
     );
     await wrapped.chat.completions.create({});
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

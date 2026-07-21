@@ -2,6 +2,7 @@ import { ClavenarTransportError } from './errors.js';
 import type {
   NormalizedToolCall,
   ClavenarDenyResponse,
+  ClavenarAtomicBatchRequest,
   ClavenarInspectRequest,
   ClavenarOptions,
   ClavenarPendingResponse,
@@ -13,6 +14,9 @@ import type {
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRY: ClavenarRetryOptions = { maxAttempts: 3, baseDelayMs: 100 };
 const CORRELATION_HEADER = 'x-clavenar-correlation-id';
+export const DECISION_CONTRACT = 'clavenar.decision/v1';
+export const DECISION_CONTRACT_HEADER = 'x-clavenar-decision-contract';
+export const IDEMPOTENCY_ID_HEADER = 'x-clavenar-idempotency-id';
 
 /**
  * Submit one normalized tool call to clavenar-lite for inspection.
@@ -40,6 +44,52 @@ export async function inspectToolUse(
   toolCall: NormalizedToolCall,
   opts: ClavenarOptions,
 ): Promise<ClavenarVerdict> {
+  const idempotencyId = newIdempotencyId();
+  const body: ClavenarInspectRequest = {
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: { name: toolCall.name, arguments: toolCall.input },
+    id: idempotencyId,
+  };
+  return inspectDecision(body, idempotencyId, opts);
+}
+
+/** Submit a complete ordered sibling set as one atomic decision. */
+export async function inspectToolUses(
+  toolCalls: readonly NormalizedToolCall[],
+  opts: ClavenarOptions,
+): Promise<ClavenarVerdict> {
+  if (toolCalls.length < 1 || toolCalls.length > 128) {
+    throw new ClavenarTransportError('atomic decision batch must contain 1..128 calls');
+  }
+  const ids = new Set<string>();
+  for (const call of toolCalls) {
+    if (!call.id || !call.name || ids.has(call.id)) {
+      throw new ClavenarTransportError('atomic decision batch requires unique non-empty call ids and names');
+    }
+    ids.add(call.id);
+  }
+  const idempotencyId = newIdempotencyId();
+  const body: ClavenarAtomicBatchRequest = {
+    jsonrpc: '2.0',
+    id: idempotencyId,
+    method: 'clavenar/tools.batch',
+    params: {
+      name: 'clavenar.atomic-batch',
+      arguments: {
+        contract: 'clavenar.atomic-tool-call-batch/v1',
+        calls: toolCalls.map((call) => ({ id: call.id, name: call.name, arguments: call.input })),
+      },
+    },
+  };
+  return inspectDecision(body, idempotencyId, opts);
+}
+
+async function inspectDecision(
+  body: ClavenarInspectRequest | ClavenarAtomicBatchRequest,
+  idempotencyId: string,
+  opts: ClavenarOptions,
+): Promise<ClavenarVerdict> {
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
     throw new ClavenarTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
@@ -52,7 +102,7 @@ export async function inspectToolUse(
   let lastErr: ClavenarTransportError | undefined;
   for (let attempt = 0; attempt < retry.maxAttempts; attempt++) {
     try {
-      return await singleAttempt(toolCall, opts, fetchImpl);
+      return await singleAttempt(body, idempotencyId, opts, fetchImpl);
     } catch (e) {
       if (!(e instanceof ClavenarTransportError)) throw e;
       lastErr = e;
@@ -69,18 +119,16 @@ export async function inspectToolUse(
 }
 
 async function singleAttempt(
-  toolCall: NormalizedToolCall,
+  body: ClavenarInspectRequest | ClavenarAtomicBatchRequest,
+  idempotencyId: string,
   opts: ClavenarOptions,
   fetchImpl: typeof fetch,
 ): Promise<ClavenarVerdict> {
-  const body: ClavenarInspectRequest = {
-    jsonrpc: '2.0',
-    method: 'tools/call',
-    params: { name: toolCall.name, arguments: toolCall.input },
-    id: toolCall.id,
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    [DECISION_CONTRACT_HEADER]: DECISION_CONTRACT,
+    [IDEMPOTENCY_ID_HEADER]: idempotencyId,
   };
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
 
   const controller = new AbortController();
@@ -146,6 +194,14 @@ async function singleAttempt(
     `clavenar inspect: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
     response.status,
   );
+}
+
+function newIdempotencyId(): string {
+  const cryptoImpl = globalThis.crypto;
+  if (!cryptoImpl || typeof cryptoImpl.randomUUID !== 'function') {
+    throw new ClavenarTransportError('crypto.randomUUID is required for decision request identity');
+  }
+  return cryptoImpl.randomUUID();
 }
 
 /**

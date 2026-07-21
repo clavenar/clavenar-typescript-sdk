@@ -22,7 +22,7 @@ import type {
   OpenAIChatToolCall,
 } from './openai.js';
 import { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';
-import { inspectToolUse, pollPendingOnce } from './transport.js';
+import { inspectToolUses, pollPendingOnce } from './transport.js';
 import { emitDenyPanel } from './devmode.js';
 import type { NormalizedToolCall, ClavenarOptions } from './types.js';
 
@@ -197,24 +197,9 @@ function extractOpenAIChatCalls(result: OpenAIChatCompletion): NormalizedToolCal
 }
 
 /**
- * Inspect every normalized tool call concurrently, fire the verdict
- * callback in submission order, and (in enforce mode) throw on the
- * first deny/pending.
- *
- * Calls are kicked off in parallel via `Promise.all` so a turn with
- * three tool_uses doesn't serialize three clavenar round-trips. The
- * `for` loop that consumes the results still preserves submission
- * order — the first deny in `calls[]` is the one that throws, not
- * the first deny to come back over the wire.
- *
- * Observe-mode transport-error handling: in `mode: 'observe'`, each
- * inspection's transport failure is caught independently so one
- * failure doesn't poison Promise.all and abort the turn (the SDK's
- * documented observe contract is "no throw, response passes
- * through"). `onPolicyError` fires per failed inspection and the
- * call is treated as allowed. In enforce mode, the first transport
- * error throws as before — fail-closed is the safer enforce
- * semantic.
+ * Decide a complete ordered sibling set atomically, then fire callbacks in
+ * submission order. No sibling gets an independent allow before the whole
+ * turn clears policy.
  */
 async function inspectAllToolCalls(
   calls: NormalizedToolCall[],
@@ -222,31 +207,31 @@ async function inspectAllToolCalls(
 ): Promise<void> {
   const enforce = (opts.mode ?? 'enforce') === 'enforce';
   if (calls.length === 0) return;
-  const results = await Promise.all(
-    calls.map(async (c) => {
-      try {
-        return { ok: true as const, verdict: await inspectToolUse(c, opts) };
-      } catch (e) {
-        if (!enforce && e instanceof ClavenarTransportError) {
-          return { ok: false as const, error: e };
+  let verdict;
+  try {
+    verdict = await inspectToolUses(calls, opts);
+  } catch (e) {
+    if (!enforce && e instanceof ClavenarTransportError) {
+      for (const call of calls) {
+        if (opts.onPolicyError) {
+          await opts.onPolicyError(e, {
+            toolName: call.name,
+            toolUseId: call.id,
+            toolInput: call.input,
+          });
         }
-        throw e;
       }
-    }),
-  );
+      return;
+    }
+    throw e;
+  }
   for (let i = 0; i < calls.length; i++) {
     const call = calls[i]!;
-    const result = results[i]!;
     const ctx = {
       toolName: call.name,
       toolUseId: call.id,
       toolInput: call.input,
     };
-    if (!result.ok) {
-      if (opts.onPolicyError) await opts.onPolicyError(result.error, ctx);
-      continue;
-    }
-    const verdict = result.verdict;
     if (opts.onVerdict) {
       await opts.onVerdict(verdict, ctx);
     }

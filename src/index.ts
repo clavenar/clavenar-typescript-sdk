@@ -1,5 +1,5 @@
 export { clavenarWrap } from './wrap.js';
-export { inspectToolUse } from './transport.js';
+export { inspectToolUse, inspectToolUses } from './transport.js';
 export {
   ClavenarDenied,
   ClavenarPending,
@@ -10,6 +10,7 @@ export {
 export type {
   ClavenarOptions,
   ClavenarInspectRequest,
+  ClavenarAtomicBatchRequest,
   ClavenarDenyResponse,
   ClavenarRateLimitResponse,
   ClavenarVerdict,
@@ -20,6 +21,26 @@ export type {
   ClavenarRetryOptions,
 } from './types.js';
 export { renderDenyPanel } from './devmode.js';
+export {
+  DURABLE_EXECUTION_CONTRACT,
+  EXECUTION_CONTRACT,
+  executePreparedTool,
+  executeTool,
+  prepareToolRequest,
+} from './governed-execution.js';
+export type {
+  DurableExecutionStore,
+  ExecutionCompletion,
+  ExecutionEffect,
+  ExecutionIntent,
+  ExecutionReceipt,
+  GovernedExecutionOptions,
+  GovernedExecutionOutcome,
+  PreparedToolRequest,
+  SignedAuthorization,
+  ToolExecutionRequest,
+  WorkloadSignature,
+} from './governed-execution.js';
 export type {
   AnthropicLike,
   AnthropicMessage,

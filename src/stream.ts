@@ -39,7 +39,7 @@ import type {
   OpenAIChatCompletionChunk,
   OpenAIChatToolCallDelta,
 } from './openai.js';
-import { inspectToolUse, pollPendingOnce } from './transport.js';
+import { inspectToolUse, inspectToolUses, pollPendingOnce } from './transport.js';
 import type { NormalizedToolCall, ClavenarOptions, ClavenarVerdict } from './types.js';
 
 export async function* wrapAnthropicStream(
@@ -198,14 +198,8 @@ async function inspectAndMaybeThrow(
 }
 
 /**
- * OpenAI choice-end batch: every tool call in one choice inspected
- * concurrently, verdicts processed in submission order. First deny
- * still throws first — same semantics as the non-streaming path.
- *
- * Observe-mode transport failures are caught per-call (mirroring
- * `inspectAllToolCalls` in wrap.ts) so one clavenar outage doesn't
- * abort the stream — observe mode's contract is "no throw, response
- * passes through" and the stream wrapper has to honor it too.
+ * OpenAI choice-end batch: every sibling is covered by one ordered atomic
+ * decision before the closing event is released.
  */
 async function inspectChoiceBatch(
   calls: NormalizedToolCall[],
@@ -213,26 +207,18 @@ async function inspectChoiceBatch(
   enforce: boolean,
 ): Promise<void> {
   if (calls.length === 0) return;
-  const results = await Promise.all(
-    calls.map(async (c) => {
-      try {
-        return { ok: true as const, verdict: await inspectToolUse(c, opts) };
-      } catch (e) {
-        if (!enforce && e instanceof ClavenarTransportError) {
-          return { ok: false as const, error: e };
-        }
-        throw e;
-      }
-    }),
-  );
-  for (let i = 0; i < calls.length; i++) {
-    const result = results[i]!;
-    const call = calls[i]!;
-    if (!result.ok) {
-      await firePolicyError(result.error, call, opts);
-      continue;
+  let verdict;
+  try {
+    verdict = await inspectToolUses(calls, opts);
+  } catch (e) {
+    if (!enforce && e instanceof ClavenarTransportError) {
+      for (const call of calls) await firePolicyError(e, call, opts);
+      return;
     }
-    await processVerdict(result.verdict, call, opts, enforce);
+    throw e;
+  }
+  for (const call of calls) {
+    await processVerdict(verdict, call, opts, enforce);
   }
 }
 

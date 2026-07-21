@@ -7,6 +7,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-21
+
+### Added
+
+- Governed execution with a construction-time registered executor, durable
+  intent/completion store, workload receipt signer, stable prepared requests,
+  and actual provider-result return.
+- The shared `clavenar.sdk-cross-language/v1` conformance fixture.
+
+### Changed
+
+- Inspection now explicitly selects the side-effect-free
+  `clavenar.decision/v1` contract with a client-generated UUID retained across
+  safe retries. Multi-tool provider turns use one ordered atomic decision
+  instead of independent sibling requests.
+
 ### Added
 
 - 429 rate-limit verdicts: the transport now parses the spec's

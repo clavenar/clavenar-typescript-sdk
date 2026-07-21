@@ -58,14 +58,15 @@ sequenceDiagram
     Note over Caller,Outer: every Reflect.get for any other prop passes the original through<br/>opts is captured in the Proxy closures and consulted on every create()
 ```
 
-## 2. Non-streaming Anthropic — extract tool_use, inspect in parallel, throw in order
+## 2. Non-streaming Anthropic — extract tool_use, decide the batch atomically
 
 When the partner awaits `wrapped.messages.create({...})`, the
 intercepted `create` calls upstream, walks `content[]` for
 `tool_use` blocks, normalises them, and `Promise.all`s an
 `inspectToolUse` per call. Verdicts are then consumed in submission
 order — the first deny / pending in `calls[]` is the one that
-throws, not the first to come back over the wire — so two parallel
+throws after one ordered atomic-batch decision, so no sibling receives an
+independent allow before the complete model turn clears policy. The
 denies always produce the same `ClavenarDenied.toolName` deterministically.
 
 ```mermaid

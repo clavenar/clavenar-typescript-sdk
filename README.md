@@ -172,7 +172,10 @@ subclasses — passes through unchanged.
 
 On every response, every tool call (Anthropic `tool_use` content
 block / OpenAI `tool_calls` entry) is sent to clavenar-lite's
-`POST /mcp` for inspection. The verdict drives:
+`POST /mcp` with `x-clavenar-decision-contract: clavenar.decision/v1` for
+side-effect-free inspection. Each request gets a client-generated UUID before
+the first network attempt, and multi-tool turns use one ordered atomic-batch
+decision. The verdict drives:
 
 | mode | verdict | result |
 |---|---|---|

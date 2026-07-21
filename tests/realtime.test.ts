@@ -97,11 +97,11 @@ describe('inspectRealtimeFunctionCall', () => {
     expect(verdict).toEqual({ kind: 'deny', payload: denyBody });
   });
 
-  it('sends the call_id as the JSON-RPC envelope id', async () => {
+  it('sends a stable UUID as the decision envelope id', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(200, {}));
     await inspectRealtimeFunctionCall(done, { endpoint: 'http://w', fetch });
     const sent = JSON.parse(fetch.mock.calls[0]![1]!.body as string);
-    expect(sent.id).toBe('call_abc');
+    expect(sent.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(sent.params.name).toBe('wire_transfer');
     expect(sent.params.arguments).toEqual({ to: 'acct-9', amount: 250 });
   });

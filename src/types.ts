@@ -133,6 +133,20 @@ export interface ClavenarInspectRequest {
   id: string;
 }
 
+/** One ordered, side-effect-free decision request for a complete model turn. */
+export interface ClavenarAtomicBatchRequest {
+  jsonrpc: '2.0';
+  method: 'clavenar/tools.batch';
+  params: {
+    name: 'clavenar.atomic-batch';
+    arguments: {
+      contract: 'clavenar.atomic-tool-call-batch/v1';
+      calls: Array<{ id: string; name: string; arguments: unknown }>;
+    };
+  };
+  id: string;
+}
+
 /**
  * Wire shape of the shared 403 error envelope emitted by both
  * clavenar-lite and full-edition clavenar-proxy. `error` is a machine

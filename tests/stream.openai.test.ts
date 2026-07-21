@@ -184,7 +184,7 @@ describe('clavenarWrap (OpenAI streaming)', () => {
     );
     const stream = (await wrapped.chat.completions.create({ stream: true })) as AsyncIterable<OpenAIChatCompletionChunk>;
     await collect(stream);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects unparseable streamed arguments with ClavenarConfigError', async () => {

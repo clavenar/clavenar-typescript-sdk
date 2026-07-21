@@ -1,6 +1,6 @@
 {
   "name": "@clavenar/agent-sdk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Clavenar before it runs.",
   "license": "Apache-2.0",
   "author": "VanteguardLabs <vanteguardlabs@gmail.com>",
@@ -28,7 +28,8 @@
     "README.md",
     "LICENSE",
     "SECURITY.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "fixtures"
   ],
   "scripts": {
     "build": "tsup",

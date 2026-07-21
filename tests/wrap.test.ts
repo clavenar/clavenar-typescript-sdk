@@ -104,10 +104,7 @@ describe('clavenarWrap (interception)', () => {
       { type: 'text', text: 'thinking...' },
       { type: 'tool_use', id: 'toolu_b', name: 'delete_user', input: { id: 1 } },
     ]);
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(allowResponse())
-      .mockResolvedValueOnce(denyResponse('delete_user'));
+    const fetch = vi.fn().mockResolvedValue(denyResponse('atomic-batch'));
     const create = vi.fn().mockResolvedValue(message);
 
     const verdicts: Array<[ClavenarVerdict, ClavenarVerdictContext]> = [];
@@ -125,9 +122,9 @@ describe('clavenarWrap (interception)', () => {
 
     const result = await wrapped.messages.create({});
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(verdicts).toHaveLength(2);
-    expect(verdicts[0]?.[0]).toEqual({ kind: 'allow' });
+    expect(verdicts[0]?.[0].kind).toBe('deny');
     expect(verdicts[0]?.[1].toolName).toBe('fetch_user');
     expect(verdicts[0]?.[1].toolUseId).toBe('toolu_a');
     expect(verdicts[1]?.[0].kind).toBe('deny');
@@ -294,15 +291,12 @@ describe('clavenarWrap (enforce-mode semantics — default)', () => {
     }
   });
 
-  it('inspects all tool_use blocks in parallel; first deny in order throws', async () => {
+  it('inspects all tool_use blocks atomically; first sibling reports deny', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_a', name: 'drop_table', input: {} },
       { type: 'tool_use', id: 'toolu_b', name: 'fetch_user', input: {} },
     ]);
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(denyResponse('drop_table'))
-      .mockResolvedValueOnce(allowResponse());
+    const fetch = vi.fn().mockResolvedValue(denyResponse('drop_table'));
     const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
@@ -316,9 +310,7 @@ describe('clavenarWrap (enforce-mode semantics — default)', () => {
       // second block — is the one that throws.
       expect((e as ClavenarDenied).toolName).toBe('drop_table');
     }
-    // Both inspections fire concurrently — partner pays one clavenar
-    // round-trip of latency, not two.
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('fires onVerdict for the denied block BEFORE throwing', async () => {
@@ -356,42 +348,36 @@ describe('clavenarWrap (enforce-mode semantics — default)', () => {
 
 });
 
-describe('clavenarWrap (parallel inspection)', () => {
-  it('kicks off every tool_use inspection before any resolves', async () => {
+describe('clavenarWrap (atomic inspection)', () => {
+  it('covers every tool_use in one decision before it resolves', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_a', name: 'fetch_user', input: { id: 1 } },
       { type: 'tool_use', id: 'toolu_b', name: 'fetch_org', input: { id: 2 } },
       { type: 'tool_use', id: 'toolu_c', name: 'fetch_log', input: { id: 3 } },
     ]);
-    // Deferred resolvers so we can prove all three fetches were
-    // kicked off before any returned — i.e. they're concurrent, not
-    // serial. If wrap were still serial, fetch would only be called
-    // once until we resolve the first deferred.
     const deferreds: Array<{ resolve: (r: Response) => void; promise: Promise<Response> }> = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 1; i++) {
       let resolve!: (r: Response) => void;
       const promise = new Promise<Response>((r) => {
         resolve = r;
       });
       deferreds.push({ resolve, promise });
     }
-    const fetch = vi
-      .fn()
-      .mockReturnValueOnce(deferreds[0]!.promise)
-      .mockReturnValueOnce(deferreds[1]!.promise)
-      .mockReturnValueOnce(deferreds[2]!.promise);
+    const fetch = vi.fn().mockReturnValueOnce(deferreds[0]!.promise);
     const wrapped = clavenarWrap(
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
     const callPromise = wrapped.messages.create({});
-    // Let the wrap's Promise.all kick off all inspections.
     for (let i = 0; i < 5; i++) await Promise.resolve();
-    expect(fetch).toHaveBeenCalledTimes(3);
-    // Now release in any order; the call should resolve.
-    deferreds[2]!.resolve(allowResponse());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetch.mock.calls[0]![1]!.body as string);
+    expect(body.params.arguments.calls.map((call: { id: string }) => call.id)).toEqual([
+      'toolu_a',
+      'toolu_b',
+      'toolu_c',
+    ]);
     deferreds[0]!.resolve(allowResponse());
-    deferreds[1]!.resolve(allowResponse());
     await callPromise;
   });
 
@@ -439,6 +425,11 @@ describe('clavenarWrap (pending verdict throws ClavenarPending)', () => {
     vi.resetModules();
     vi.doMock('../src/transport.js', () => ({
       inspectToolUse: async () => ({
+        kind: 'pending',
+        correlationId: 'corr_e2e_123',
+        reviewReasons: ['Review: Wire transfers require human approval before execution.'],
+      }),
+      inspectToolUses: async () => ({
         kind: 'pending',
         correlationId: 'corr_e2e_123',
         reviewReasons: ['Review: Wire transfers require human approval before execution.'],
@@ -514,17 +505,12 @@ describe('clavenarWrap (observe-mode transport-error resilience)', () => {
     expect(policyErrors).toEqual([{ tool: 'fetch_user', status: undefined }]);
   });
 
-  it('observe mode: one transport failure doesn\'t poison other inspections', async () => {
+  it('observe mode: one atomic transport failure reports every covered sibling', async () => {
     const message = makeMessage([
       { type: 'tool_use', id: 'toolu_a', name: 'fetch_user', input: { id: 1 } },
       { type: 'tool_use', id: 'toolu_b', name: 'delete_user', input: { id: 1 } },
     ]);
-    // First inspect succeeds, second fails — observe should fire
-    // onVerdict for the first and onPolicyError for the second.
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(allowResponse())
-      .mockRejectedValueOnce(new TypeError('connection refused'));
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('connection refused'));
     const create = vi.fn().mockResolvedValue(message);
     const verdicts: string[] = [];
     const policyErrors: string[] = [];
@@ -547,8 +533,8 @@ describe('clavenarWrap (observe-mode transport-error resilience)', () => {
 
     await wrapped.messages.create({});
 
-    expect(verdicts).toEqual(['fetch_user']);
-    expect(policyErrors).toEqual(['delete_user']);
+    expect(verdicts).toEqual([]);
+    expect(policyErrors).toEqual(['fetch_user', 'delete_user']);
   });
 
   it('enforce mode (default): transport failure still throws ClavenarTransportError', async () => {

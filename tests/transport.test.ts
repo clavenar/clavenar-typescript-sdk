@@ -154,12 +154,15 @@ describe('inspectToolUse', () => {
     await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     const init = fetch.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(init.body as string);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       jsonrpc: '2.0',
       method: 'tools/call',
       params: { name: 'delete_user', arguments: { user_id: 42 } },
-      id: 'toolu_demo',
     });
+    expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-clavenar-decision-contract']).toBe('clavenar.decision/v1');
+    expect(headers['x-clavenar-idempotency-id']).toBe(body.id);
   });
 
   it('targets {endpoint}/mcp', async () => {
