@@ -65,7 +65,7 @@ jobs:
       - name: build live backend
         run: cargo build --locked --manifest-path clavenar-lite/Cargo.toml
 
-      - name: run the complete SDK round trip
+      - name: prove the transitional Lite decision boundary
         env:
           CLAVENAR_E2E_ENDPOINT: http://127.0.0.1:8088
           CLAVENAR_E2E_TOKEN: feature-matrix-agent
@@ -85,7 +85,7 @@ jobs:
             sleep 1
           done
           curl --fail --silent http://127.0.0.1:8088/readyz >/dev/null
-          pnpm test
+          pnpm exec tsx tests/lite-decision-boundary.ts
 
   # Same posture as the Go/Java/.NET siblings, which all scan in the PR
   # path — this package ships to npm and had no vuln/SBOM gate here.

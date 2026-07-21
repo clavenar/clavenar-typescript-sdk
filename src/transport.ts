@@ -1,4 +1,5 @@
 import { ClavenarTransportError } from './errors.js';
+import { randomUUID } from 'node:crypto';
 import type {
   NormalizedToolCall,
   ClavenarDenyResponse,
@@ -197,11 +198,7 @@ async function singleAttempt(
 }
 
 function newIdempotencyId(): string {
-  const cryptoImpl = globalThis.crypto;
-  if (!cryptoImpl || typeof cryptoImpl.randomUUID !== 'function') {
-    throw new ClavenarTransportError('crypto.randomUUID is required for decision request identity');
-  }
-  return cryptoImpl.randomUUID();
+  return randomUUID();
 }
 
 /**

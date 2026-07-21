@@ -1,4 +1,5 @@
 import { ClavenarConfigError, ClavenarTransportError } from './errors.js';
+import { randomUUID } from 'node:crypto';
 import type { ClavenarRetryOptions } from './types.js';
 import {
   DECISION_CONTRACT,
@@ -130,11 +131,7 @@ const DEFAULT_RETRY: ClavenarRetryOptions = { maxAttempts: 3, baseDelayMs: 100 }
 /** Allocate a serializable request identity before any network access. */
 export function prepareToolRequest(name: string, args: unknown): PreparedToolRequest {
   if (!name.trim()) throw new ClavenarConfigError('tool name must not be empty');
-  const cryptoImpl = globalThis.crypto;
-  if (!cryptoImpl || typeof cryptoImpl.randomUUID !== 'function') {
-    throw new ClavenarConfigError('crypto.randomUUID is required for governed execution');
-  }
-  return { idempotencyId: cryptoImpl.randomUUID(), name, arguments: args };
+  return { idempotencyId: randomUUID(), name, arguments: args };
 }
 
 /** Side-effect-free authorize, durably record, execute once, and retain receipt. */
