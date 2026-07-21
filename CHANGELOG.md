@@ -7,6 +7,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-21
+
+### Changed
+
+- Single-tool provider turns use the concrete side-effect-free decision wire
+  shape; the atomic batch envelope remains reserved for turns with two or more
+  sibling calls. This keeps Lite and Proxy interoperability without weakening
+  multi-call atomicity.
+
 ## [1.2.0] - 2026-07-21
 
 ### Added

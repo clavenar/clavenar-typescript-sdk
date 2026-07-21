@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { inspectToolUse, joinUrl, pollPendingOnce } from '../src/transport.js';
+import { inspectToolUse, inspectToolUses, joinUrl, pollPendingOnce } from '../src/transport.js';
 import { ClavenarTransportError } from '../src/errors.js';
 import type { AnthropicToolUseBlock } from '../src/anthropic.js';
 import type { ClavenarDenyResponse } from '../src/types.js';
@@ -22,6 +22,28 @@ function fakeResponse(status: number, body?: unknown): Response {
 }
 
 describe('inspectToolUse', () => {
+  it('keeps a one-call batch on the concrete decision wire shape', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
+    await inspectToolUses([toolUse], { endpoint: 'http://w', fetch });
+    const init = fetch.mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as { method: string; params: { name: string } };
+    expect(body.method).toBe('tools/call');
+    expect(body.params.name).toBe('delete_user');
+  });
+
+  it('keeps true sibling sets in one atomic decision envelope', async () => {
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
+    await inspectToolUses(
+      [toolUse, { ...toolUse, id: 'toolu_second', name: 'fetch_user' }],
+      { endpoint: 'http://w', fetch },
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const init = fetch.mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as { method: string; params: { name: string } };
+    expect(body.method).toBe('clavenar/tools.batch');
+    expect(body.params.name).toBe('clavenar.atomic-batch');
+  });
+
   it('returns allow on 200', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(200, { id: 'msg' }));
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });

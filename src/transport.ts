@@ -70,6 +70,12 @@ export async function inspectToolUses(
     }
     ids.add(call.id);
   }
+  // A one-call turn has no siblings to coordinate. Keep its wire shape on the
+  // universally supported concrete decision path; true sibling sets retain
+  // the single atomic envelope below.
+  if (toolCalls.length === 1) {
+    return inspectToolUse(toolCalls[0]!, opts);
+  }
   const idempotencyId = newIdempotencyId();
   const body: ClavenarAtomicBatchRequest = {
     jsonrpc: '2.0',
