@@ -1,5 +1,5 @@
 import { ClavenarConfigError, ClavenarTransportError } from './errors.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ClavenarRetryOptions } from './types.js';
 import {
   DECISION_CONTRACT,
@@ -322,10 +322,7 @@ function validateAuthorization(
 }
 
 async function sha256(value: unknown): Promise<string> {
-  const cryptoImpl = globalThis.crypto;
-  if (!cryptoImpl?.subtle) throw new ClavenarConfigError('Web Crypto is required for receipts');
-  const digest = await cryptoImpl.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(value)));
-  return `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  return `sha256:${createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex')}`;
 }
 
 function canonicalJson(value: unknown): string {
