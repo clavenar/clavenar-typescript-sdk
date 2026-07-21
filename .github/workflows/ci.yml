@@ -65,7 +65,7 @@ jobs:
       - name: build live backend
         run: cargo build --locked --manifest-path clavenar-lite/Cargo.toml
 
-      - name: prove the transitional Lite decision boundary
+      - name: prove the Lite side-effect-free decision boundary
         env:
           CLAVENAR_E2E_ENDPOINT: http://127.0.0.1:8088
           CLAVENAR_E2E_TOKEN: feature-matrix-agent
