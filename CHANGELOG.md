@@ -7,6 +7,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-21
+
+### Changed
+
+- Package the exact `clavenar.client-migration/v1` fixture and schema and
+  document the client-first rollout. Inspection remains an explicit
+  side-effect-free decision with its canonical pre-network request ID.
+
 ## [1.4.0] - 2026-07-21
 
 ### Changed
