@@ -7,6 +7,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-26
+
+### Added
+
+- `SecureTransportProfile` supplies reloadable CA/client-identity sources,
+  per-request token acquisition, separate connect/request deadlines, and
+  direct/environment/explicit proxy policy to every inspection and poll.
+
 ## [1.5.0] - 2026-07-21
 
 ### Changed

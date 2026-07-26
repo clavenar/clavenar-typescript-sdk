@@ -11,6 +11,8 @@
 export interface ClavenarOptions {
   endpoint: string;
   token?: string;
+  /** Reusable mTLS/token/deadline/proxy profile. */
+  transportProfile?: import('./secure-transport.js').SecureTransportProfile;
   mode?: 'enforce' | 'observe';
   /** Per-request timeout in ms. Default 10_000. */
   timeoutMs?: number;

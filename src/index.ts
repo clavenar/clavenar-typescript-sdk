@@ -1,4 +1,10 @@
 export { clavenarWrap } from './wrap.js';
+export { SecureTransportProfile } from './secure-transport.js';
+export type {
+  ProxyPolicy,
+  SecureTransportConfig,
+  TokenProvider,
+} from './secure-transport.js';
 export { inspectToolUse, inspectToolUses } from './transport.js';
 export {
   ClavenarDenied,

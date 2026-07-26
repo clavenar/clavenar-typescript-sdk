@@ -97,7 +97,10 @@ async function inspectDecision(
   idempotencyId: string,
   opts: ClavenarOptions,
 ): Promise<ClavenarVerdict> {
-  const fetchImpl = opts.fetch ?? globalThis.fetch;
+  if (opts.transportProfile && opts.fetch) {
+    throw new ClavenarTransportError('transportProfile cannot be combined with a custom fetch');
+  }
+  const fetchImpl = opts.transportProfile?.fetch ?? opts.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
     throw new ClavenarTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
   }
@@ -136,10 +139,11 @@ async function singleAttempt(
     [DECISION_CONTRACT_HEADER]: DECISION_CONTRACT,
     [IDEMPOTENCY_ID_HEADER]: idempotencyId,
   };
-  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+  const token = await resolveToken(opts);
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? opts.transportProfile?.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
@@ -217,17 +221,21 @@ function newIdempotencyId(): string {
  */
 export async function pollPendingOnce(
   correlationId: string,
-  opts: Pick<ClavenarOptions, 'endpoint' | 'token' | 'timeoutMs' | 'fetch'>,
+  opts: Pick<ClavenarOptions, 'endpoint' | 'token' | 'timeoutMs' | 'fetch' | 'transportProfile'>,
 ): Promise<ClavenarPendingView> {
-  const fetchImpl = opts.fetch ?? globalThis.fetch;
+  if (opts.transportProfile && opts.fetch) {
+    throw new ClavenarTransportError('transportProfile cannot be combined with a custom fetch');
+  }
+  const fetchImpl = opts.transportProfile?.fetch ?? opts.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
     throw new ClavenarTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
   }
   const headers: Record<string, string> = {};
-  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+  const token = await resolveToken(opts);
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? opts.transportProfile?.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
@@ -255,6 +263,15 @@ export async function pollPendingOnce(
     `clavenar poll: unexpected status ${response.status}${text ? `: ${text}` : ''}`,
     response.status,
   );
+}
+
+async function resolveToken(
+  opts: Pick<ClavenarOptions, 'token' | 'transportProfile'>,
+): Promise<string | undefined> {
+  if (opts.token && opts.transportProfile) {
+    throw new ClavenarTransportError('token cannot be combined with transportProfile token acquisition');
+  }
+  return opts.transportProfile ? opts.transportProfile.token() : opts.token;
 }
 
 function isRetriable(e: ClavenarTransportError): boolean {
