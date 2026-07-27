@@ -3,7 +3,7 @@
   "version": "1.6.0",
   "description": "Wrap your Anthropic / OpenAI client. Every tool call is inspected by Clavenar before it runs.",
   "license": "Apache-2.0",
-  "author": "VanteguardLabs <vanteguardlabs@gmail.com>",
+  "author": "Vanteguard Labs <vanteguardlabs@gmail.com>",
   "homepage": "https://clavenar.com",
   "repository": {
     "type": "git",
