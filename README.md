@@ -25,10 +25,10 @@ Three commands from zero to a verdict:
 docker run -p 8088:8088 \
   -e CLAVENAR_LITE_UPSTREAM_URL=https://api.anthropic.com \
   -e CLAVENAR_LITE_MODE=observe \
-  ghcr.io/clavenar/clavenar-lite:latest
+  ghcr.io/clavenar/clavenar-lite:0.12.0
 
 # 2. Install the SDK in your agent project.
-pnpm add @clavenar/agent-sdk @anthropic-ai/sdk
+pnpm add @clavenar/agent-sdk@1.6.0 @anthropic-ai/sdk
 
 # 3. Wrap your client. The snippet below catches a deny verdict;
 #    in observe mode every call passes through and you read the
@@ -193,8 +193,8 @@ verdicts.
 ## Install
 
 ```sh
-pnpm add @clavenar/agent-sdk @anthropic-ai/sdk     # Anthropic
-pnpm add @clavenar/agent-sdk openai                # OpenAI
+pnpm add @clavenar/agent-sdk@1.6.0 @anthropic-ai/sdk     # Anthropic
+pnpm add @clavenar/agent-sdk@1.6.0 openai                # OpenAI
 ```
 
 `@anthropic-ai/sdk` and `openai` are peer dependencies — install
@@ -203,7 +203,7 @@ whichever ones you use. The SDK has no hard import on either.
 Run a clavenar-lite instance somewhere reachable.
 [`clavenar-lite`](https://github.com/clavenar/clavenar-lite) is a
 single Rust binary, self-hosted in your infra — container, Fly.io
-button, or `cargo install`. See its [Run it in 60 seconds](https://github.com/clavenar/clavenar-lite#run-it-in-60-seconds)
+button, versioned container, or static release binary. See its [Run it in 60 seconds](https://github.com/clavenar/clavenar-lite#run-it-in-60-seconds)
 section.
 
 ## Demo

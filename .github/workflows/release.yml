@@ -1,17 +1,12 @@
 name: release
-
-# Push a tag matching v* (e.g. v0.1.0) to publish. The tag must
-# match package.json's "version" field; the workflow asserts this
-# before running `npm publish` so a typo can't ship a mismatched
-# tarball.
+run-name: publish ${{ github.event.client_payload.publication_id }}
 
 on:
-  push:
-    tags:
-      - 'v*'
+  repository_dispatch:
+    types: [clavenar-protected-publication]
 
 permissions:
-  contents: read
+  contents: write
   # OIDC provenance — required for `npm publish --provenance` to mint
   # a signed Sigstore attestation. The SDK ships with provenance from
   # 0.1.0 onwards; partners can verify with `npm audit signatures`.
@@ -22,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.event.client_payload.source_sha }}
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
@@ -35,19 +32,67 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Verify tag matches package.json version
+      - name: Verify protected publication input
+        env:
+          COMPONENT_VERSION: ${{ github.event.client_payload.component_version }}
+          RELEASE_REFERENCE: ${{ github.event.client_payload.release_reference }}
+          SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          test "$GITHUB_ACTOR" = "vanteguardlabs"
+          [[ "$RELEASE_REFERENCE" =~ ^ghcr\.io/clavenar/clavenar-stack-release@sha256:[0-9a-f]{64}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           PKG="$(node -p "require('./package.json').version")"
-          if [ "$TAG" != "$PKG" ]; then
-            echo "::error::tag '$GITHUB_REF_NAME' (version '$TAG') does not match package.json '$PKG'"
+          if [ "$COMPONENT_VERSION" != "$PKG" ]; then
+            echo "::error::protected component version does not match package.json '$PKG'"
             exit 1
           fi
 
+      - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
 
-      - run: pnpm publish --access public --provenance --no-git-checks
+      - name: Build the exact npm tarball
+        run: |
+          mkdir -p artifacts
+          pnpm pack --pack-destination artifacts
+
+      - name: Check whether this exact version is already public
+        id: registry
+        run: |
+          code="$(curl -sS -o /tmp/npm-version.json -w '%{http_code}' \
+            'https://registry.npmjs.org/@clavenar%2fagent-sdk/${{ github.event.client_payload.component_version }}')"
+          if [ "$code" = 200 ]; then
+            test "$(jq -r .version /tmp/npm-version.json)" = \
+              "${{ github.event.client_payload.component_version }}"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif [ "$code" = 404 ]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat /tmp/npm-version.json >&2
+            exit 1
+          fi
+
+      - name: Publish to npm with provenance
+        if: steps.registry.outputs.exists == 'false'
+        run: pnpm publish --access public --provenance --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish the exact source tag and release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.client_payload.component_version }}
+          SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha')" = "$SOURCE_SHA"
+            gh release upload "$tag" artifacts/*.tgz --clobber
+          else
+            gh release create "$tag" --target "$SOURCE_SHA" \
+              --title "$tag — @clavenar/agent-sdk" \
+              --notes "Published from the accepted protected Clavenar release." \
+              artifacts/*.tgz
+          fi
