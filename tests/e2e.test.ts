@@ -28,7 +28,7 @@ const enabled = typeof endpoint === 'string' && endpoint.length > 0;
 const maybeDescribe = enabled ? describe : describe.skip;
 
 maybeDescribe('e2e against clavenar-lite', () => {
-  const opts = { endpoint: endpoint!, token };
+  const opts = { endpoint: endpoint!, token, allowInsecureLoopback: true };
 
   it('inspectToolUse: sql_execute → deny', async () => {
     const block: AnthropicToolUseBlock = {
