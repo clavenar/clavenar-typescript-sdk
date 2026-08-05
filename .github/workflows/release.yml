@@ -14,7 +14,8 @@ permissions:
 
 jobs:
   publish:
-    runs-on: self-hosted
+    # npm provenance accepts only supported cloud-hosted runner identities.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
