@@ -4,7 +4,7 @@ import type { OpenAIChatCompletionChunk } from '../src/openai.js';
 import type { ClavenarVerdict } from '../src/types.js';
 
 function allowResponse(): Response {
-  return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(null, { status: 200 });
 }
 
 function denyResponse(toolName: string): Response {
@@ -241,5 +241,39 @@ describe('clavenarWrap (OpenAI streaming)', () => {
     const stream = (await wrapped.chat.completions.create({ stream: true })) as AsyncIterable<OpenAIChatCompletionChunk>;
     await collect(stream);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a tool_calls terminal chunk has no buffers', async () => {
+    const chunks: OpenAIChatCompletionChunk[] = [
+      {
+        id: 'c1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+      },
+    ];
+    const wrapped = clavenarWrap(
+      { chat: { completions: { create: async () => fromArray(chunks) } } },
+      { endpoint: 'http://w', fetch: vi.fn() },
+    );
+    const stream = (await wrapped.chat.completions.create({ stream: true })) as AsyncIterable<OpenAIChatCompletionChunk>;
+    await expect(collect(stream)).rejects.toBeInstanceOf(ClavenarConfigError);
+  });
+
+  it('reports a bufferless terminal chunk and passes it through in observe mode', async () => {
+    const chunks: OpenAIChatCompletionChunk[] = [
+      {
+        id: 'c1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+      },
+    ];
+    const onPolicyError = vi.fn();
+    const wrapped = clavenarWrap(
+      { chat: { completions: { create: async () => fromArray(chunks) } } },
+      { endpoint: 'http://w', fetch: vi.fn(), mode: 'observe', onPolicyError },
+    );
+    const stream = (await wrapped.chat.completions.create({ stream: true })) as AsyncIterable<OpenAIChatCompletionChunk>;
+    await expect(collect(stream)).resolves.toEqual(chunks);
+    expect(onPolicyError).toHaveBeenCalledTimes(1);
   });
 });

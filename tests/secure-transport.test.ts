@@ -50,5 +50,22 @@ describe('SecureTransportProfile', () => {
       tokenProvider: () => ' ',
     });
     await expect(profile.token()).rejects.toThrow(/empty token/);
+    await profile.close();
+  });
+
+  it('recovers lifecycle serialization after a failed reload and closes terminally', async () => {
+    const files = sources();
+    const profile = new SecureTransportProfile({
+      caBundlePath: files.ca,
+      clientCertificatePath: files.cert,
+      privateKeyPath: files.key,
+      tokenProvider: () => 'token',
+    });
+    writeFileSync(files.ca, '');
+    await expect(profile.reload()).rejects.toThrow(/empty/);
+    writeFileSync(files.ca, 'restored');
+    await expect(profile.reload()).resolves.toBeUndefined();
+    await profile.close();
+    await expect(profile.token()).rejects.toThrow(/closed/);
   });
 });

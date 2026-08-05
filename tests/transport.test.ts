@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { inspectToolUse, inspectToolUses, joinUrl, pollPendingOnce } from '../src/transport.js';
-import { ClavenarTransportError } from '../src/errors.js';
+import { ClavenarConfigError, ClavenarTransportError } from '../src/errors.js';
 import type { AnthropicToolUseBlock } from '../src/anthropic.js';
 import type { ClavenarDenyResponse } from '../src/types.js';
 
@@ -45,9 +45,28 @@ describe('inspectToolUse', () => {
   });
 
   it('returns allow on 200', async () => {
-    const fetch = vi.fn().mockResolvedValue(fakeResponse(200, { id: 'msg' }));
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({ kind: 'allow' });
+  });
+
+  it('fails closed on an arbitrary 200 body', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      fakeResponse(200, { verdict: 'allow', unexpected: true }),
+    );
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'ClavenarTransportError',
+      status: 200,
+    });
+  });
+
+  it('rejects oversized responses before parsing', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response('x', { status: 200, headers: { 'content-length': String((1 << 20) + 1) } }),
+    );
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toThrow(
+      /exceeds/,
+    );
   });
 
   it('returns deny + parsed payload on 403', async () => {
@@ -159,9 +178,17 @@ describe('inspectToolUse', () => {
 
   it('sends bearer header when token set', async () => {
     const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
-    await inspectToolUse(toolUse, { endpoint: 'http://w', token: 's3cret', fetch });
+    await inspectToolUse(toolUse, { endpoint: 'https://w', token: 's3cret', fetch });
     const init = fetch.mock.calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer s3cret');
+  });
+
+  it('requires https for credentials outside explicit loopback development', async () => {
+    const fetch = vi.fn();
+    await expect(
+      inspectToolUse(toolUse, { endpoint: 'http://w', token: 'secret', fetch }),
+    ).rejects.toBeInstanceOf(ClavenarConfigError);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('omits bearer header when token unset', async () => {
@@ -223,7 +250,7 @@ describe('inspectToolUse (retry on transient errors)', () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(fakeResponse(502, 'bad gateway'))
-      .mockResolvedValueOnce(fakeResponse(200, { ok: true }));
+      .mockResolvedValueOnce(fakeResponse(200));
     const verdict = await inspectToolUse(toolUse, {
       endpoint: 'http://w',
       fetch,
@@ -323,7 +350,7 @@ describe('inspectToolUse (correlation id)', () => {
     const fetch = vi
       .fn()
       .mockResolvedValue(
-        fakeResponseWithHeaders(200, { ok: true }, { 'X-Clavenar-Correlation-Id': 'corr_a' }),
+        fakeResponseWithHeaders(200, { verdict: 'allow' }, { 'X-Clavenar-Correlation-Id': 'corr_a' }),
       );
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({ kind: 'allow', correlationId: 'corr_a' });
@@ -350,7 +377,7 @@ describe('inspectToolUse (correlation id)', () => {
   });
 
   it('omits correlationId when header absent', async () => {
-    const fetch = vi.fn().mockResolvedValue(fakeResponse(200, {}));
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
     const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({ kind: 'allow' });
   });
@@ -402,6 +429,16 @@ describe('inspectToolUse (202 pending)', () => {
     });
   });
 
+  it('throws when the 202 header and body correlation ids differ', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      pendingResponse({ 'X-Clavenar-Correlation-Id': 'different' }),
+    );
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
+      name: 'ClavenarTransportError',
+      status: 202,
+    });
+  });
+
   it('throws when 202 is unparseable', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('not json', { status: 202 }));
     await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toMatchObject({
@@ -412,10 +449,14 @@ describe('inspectToolUse (202 pending)', () => {
 });
 
 describe('pollPendingOnce', () => {
-  function pendingView(decision: 'allow' | 'deny' | null, deciderNote: string | null = null): Response {
+  function pendingView(
+    decision: 'allow' | 'deny' | null,
+    deciderNote: string | null = null,
+    correlationId = 'corr_p',
+  ): Response {
     return new Response(
       JSON.stringify({
-        correlation_id: 'corr_p',
+        correlation_id: correlationId,
         agent_id: 'agent-1',
         tool_type: 'wire_transfer',
         method: 'call_tool',
@@ -453,7 +494,7 @@ describe('pollPendingOnce', () => {
 
   it('forwards the bearer token when configured', async () => {
     const fetch = vi.fn().mockResolvedValue(pendingView(null));
-    await pollPendingOnce('corr_p', { endpoint: 'http://w', token: 's3cret', fetch });
+    await pollPendingOnce('corr_p', { endpoint: 'https://w', token: 's3cret', fetch });
     const init = fetch.mock.calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer s3cret');
   });
@@ -475,7 +516,7 @@ describe('pollPendingOnce', () => {
   });
 
   it('url-encodes the correlation id', async () => {
-    const fetch = vi.fn().mockResolvedValue(pendingView(null));
+    const fetch = vi.fn().mockResolvedValue(pendingView(null, null, 'a/b c'));
     await pollPendingOnce('a/b c', { endpoint: 'http://w', fetch });
     expect(fetch.mock.calls[0]?.[0]).toBe('http://w/pending/a%2Fb%20c');
   });

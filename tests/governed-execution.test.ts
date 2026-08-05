@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  ClavenarRecoveryRequired,
   executePreparedTool,
   type ExecutionCompletion,
   type ExecutionIntent,
+  type ExecutionState,
   type PreparedToolRequest,
 } from '../src/index.js';
 
@@ -52,6 +54,7 @@ describe('governed execution', () => {
     const order: string[] = [];
     let intent: ExecutionIntent | undefined;
     let completion: ExecutionCompletion | undefined;
+    const state: ExecutionState = {};
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(authorization()), {
         status: 200,
@@ -64,31 +67,44 @@ describe('governed execution', () => {
       executorId: 'payments-provider',
       fetch,
       durableStore: {
+        loadExecution: async () => state,
         commitIntent: async (value) => {
           order.push('intent');
           intent = value;
+          state.intent = value;
         },
         commitCompletionAndEnqueueReceipt: async (value) => {
           order.push('completion');
           completion = value;
+          state.completion = value;
         },
+      },
+      verifyAuthorization: async (signed) => {
+        signed.authorization.tool_name = 'mutated-by-verifier';
       },
       executor: async (request) => {
         order.push('effect');
         expect(request.idempotencyId).toBe(prepared.idempotencyId);
         return { result: { ok: true }, effectId: 'provider-operation-123' };
       },
-      signReceipt: async () => ({
-        algorithm: 'ES256',
-        credential_fingerprint:
-          'sha256:1111111111111111111111111111111111111111111111111111111111111111',
-        value: 'signed-receipt',
-      }),
+      signReceipt: async (unsigned) => {
+        unsigned.authorization_id = 'mutated-by-signer';
+        return {
+          algorithm: 'ES256',
+          credential_fingerprint:
+            'sha256:1111111111111111111111111111111111111111111111111111111111111111',
+          value: 'signed-receipt',
+        };
+      },
     });
 
     expect(order).toEqual(['intent', 'effect', 'completion']);
     expect(outcome.result).toEqual({ ok: true });
     expect(outcome.effectId).toBe('provider-operation-123');
+    expect(outcome.receipt.authorization_id).toBe(
+      '354c33ed-e5d3-4af7-a1b8-b009d50b0bc5',
+    );
+    expect(outcome.receipt.authorization.authorization.tool_name).toBe(prepared.name);
     expect(intent?.executor_id).toBe('payments-provider');
     expect(completion?.actual_result_sha256).toBe(
       'sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93',
@@ -112,12 +128,14 @@ describe('governed execution', () => {
           }),
         ),
         durableStore: {
+          loadExecution: async () => ({}),
           commitIntent: async () => {
             throw new Error('store unavailable');
           },
           commitCompletionAndEnqueueReceipt: async () => undefined,
         },
         executor,
+        verifyAuthorization: async () => undefined,
         signReceipt: async () => {
           throw new Error('unreachable');
         },
@@ -141,10 +159,12 @@ describe('governed execution', () => {
         fetch,
         retry: { maxAttempts: 3, baseDelayMs: 1 },
         durableStore: {
+          loadExecution: async () => ({}),
           commitIntent: async () => undefined,
           commitCompletionAndEnqueueReceipt: async () => undefined,
         },
         executor,
+        verifyAuthorization: async () => undefined,
         signReceipt: async () => {
           throw new Error('unreachable');
         },
@@ -152,5 +172,105 @@ describe('governed execution', () => {
     ).rejects.toThrow('provider response lost');
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(executor).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an authorization whose signature verifier fails before durable intent', async () => {
+    const store = {
+      loadExecution: vi.fn().mockResolvedValue({}),
+      commitIntent: vi.fn(),
+      commitCompletionAndEnqueueReceipt: vi.fn(),
+    };
+    const executor = vi.fn();
+    await expect(
+      executePreparedTool(prepared, {
+        endpoint: 'https://gateway.example',
+        executorId: 'payments-provider',
+        fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify(authorization()), { status: 200 })),
+        durableStore: store,
+        executor,
+        verifyAuthorization: async () => {
+          throw new Error('unknown identity key');
+        },
+        signReceipt: async () => {
+          throw new Error('unreachable');
+        },
+      }),
+    ).rejects.toThrow('authorization signature verification failed');
+    expect(store.commitIntent).not.toHaveBeenCalled();
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it('fails closed instead of repeating an ambiguous persisted intent', async () => {
+    const signed = authorization();
+    const auth = signed.authorization;
+    const intent: ExecutionIntent = {
+      contract: 'clavenar.sdk-durable-intent-outbox/v1',
+      stage: 'execution.intent',
+      authorization_id: auth.authorization_id,
+      idempotency_id: auth.idempotency_id,
+      tenant: auth.tenant,
+      workload_id: auth.agent_id,
+      workload_spiffe: auth.agent_spiffe,
+      payload_sha256: auth.payload_sha256,
+      executor_id: 'payments-provider',
+      authorization: signed,
+    };
+    const executor = vi.fn();
+    await expect(
+      executePreparedTool(prepared, {
+        endpoint: 'https://gateway.example',
+        executorId: 'payments-provider',
+        durableStore: {
+          loadExecution: async () => ({ intent }),
+          commitIntent: async () => undefined,
+          commitCompletionAndEnqueueReceipt: async () => undefined,
+        },
+        executor,
+        verifyAuthorization: async () => undefined,
+        signReceipt: async () => {
+          throw new Error('unreachable');
+        },
+      }),
+    ).rejects.toBeInstanceOf(ClavenarRecoveryRequired);
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it('finalizes a conclusively recovered provider effect without replay', async () => {
+    const signed = authorization();
+    const auth = signed.authorization;
+    const intent: ExecutionIntent = {
+      contract: 'clavenar.sdk-durable-intent-outbox/v1',
+      stage: 'execution.intent',
+      authorization_id: auth.authorization_id,
+      idempotency_id: auth.idempotency_id,
+      tenant: auth.tenant,
+      workload_id: auth.agent_id,
+      workload_spiffe: auth.agent_spiffe,
+      payload_sha256: auth.payload_sha256,
+      executor_id: 'payments-provider',
+      authorization: signed,
+    };
+    const executor = vi.fn();
+    const commitCompletion = vi.fn();
+    const outcome = await executePreparedTool(prepared, {
+      endpoint: 'https://gateway.example',
+      executorId: 'payments-provider',
+      durableStore: {
+        loadExecution: async () => ({ intent }),
+        commitIntent: async () => undefined,
+        commitCompletionAndEnqueueReceipt: commitCompletion,
+      },
+      executor,
+      recoverEffect: async () => ({ result: { ok: true }, effectId: 'provider-operation-123' }),
+      verifyAuthorization: async () => undefined,
+      signReceipt: async () => ({
+        algorithm: 'ES256',
+        credential_fingerprint: auth.credential_fingerprint,
+        value: 'signed-receipt',
+      }),
+    });
+    expect(outcome.effectId).toBe('provider-operation-123');
+    expect(commitCompletion).toHaveBeenCalledOnce();
+    expect(executor).not.toHaveBeenCalled();
   });
 });

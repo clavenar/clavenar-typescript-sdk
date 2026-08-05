@@ -15,7 +15,7 @@ function makeCompletion(toolCalls: OpenAIChatToolCall[] | null): OpenAIChatCompl
           content: null,
           ...(toolCalls === null ? {} : { tool_calls: toolCalls }),
         },
-        finish_reason: 'tool_calls',
+        finish_reason: toolCalls === null ? 'stop' : 'tool_calls',
       },
     ],
   };
@@ -30,7 +30,7 @@ function toolCall(id: string, name: string, args: unknown): OpenAIChatToolCall {
 }
 
 function allowResponse(): Response {
-  return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(null, { status: 200 });
 }
 
 function denyResponse(toolName: string): Response {
@@ -67,6 +67,30 @@ describe('clavenarWrap (OpenAI client detection)', () => {
 });
 
 describe('clavenarWrap (OpenAI tool_calls inspection)', () => {
+  it('fails closed when finish_reason declares tool calls but none are extractable', async () => {
+    const completion = makeCompletion([]);
+    const fetch = vi.fn();
+    const wrapped = clavenarWrap(
+      { chat: { completions: { create: async () => completion } } },
+      { endpoint: 'http://w', fetch },
+    );
+    await expect(wrapped.chat.completions.create({})).rejects.toBeInstanceOf(ClavenarConfigError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reports shape drift and passes through in observe mode', async () => {
+    const completion = makeCompletion([]);
+    const fetch = vi.fn();
+    const errors = vi.fn();
+    const wrapped = clavenarWrap(
+      { chat: { completions: { create: async () => completion } } },
+      { endpoint: 'http://w', fetch, mode: 'observe', onPolicyError: errors },
+    );
+    await expect(wrapped.chat.completions.create({})).resolves.toBe(completion);
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('passes through completions with no tool_calls unchanged', async () => {
     const completion = makeCompletion(null);
     const fetch = vi.fn();

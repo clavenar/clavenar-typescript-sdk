@@ -118,6 +118,14 @@ describe('ClavenarPending.resolve', () => {
     });
   });
 
+  it('surfaces a malformed 200 polling response immediately', async () => {
+    const fatal = new ClavenarTransportError('malformed pending view', 200);
+    const pollOnce = vi.fn().mockRejectedValueOnce(fatal);
+    const p = pending(pollOnce);
+    await expect(p.resolve({ pollIntervalMs: 1, timeoutMs: 500 })).rejects.toBe(fatal);
+    expect(pollOnce).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects zero/negative pollIntervalMs eagerly', async () => {
     const p = pending(vi.fn());
     await expect(p.resolve({ pollIntervalMs: 0, timeoutMs: 100 })).rejects.toMatchObject({

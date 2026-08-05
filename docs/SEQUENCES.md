@@ -96,13 +96,14 @@ sequenceDiagram
         L-->>T: 200 (allow) OR 403 (deny + body) OR 202 (pending + body) OR 5xx
         T->>T: read X-Clavenar-Correlation-Id header
         alt 200
+            T->>T: accept empty body or exact { verdict: 'allow' } only
             T-->>Insp: { kind: 'allow', correlationId? }
         else 403
             T->>T: parseDenyBody — { error: security_violation, reasons, review_reasons, intent_category }
             T-->>Insp: { kind: 'deny', payload, correlationId? }
         else 202
             T->>T: parsePendingBody — { status: pending, correlation_id, review_reasons }
-            T->>T: corr = header ?? body.correlation_id (else throw ClavenarTransportError 202)
+            T->>T: require header/body correlation IDs to match; accept either alone
             T-->>Insp: { kind: 'pending', correlationId, reviewReasons }
         else 5xx / network / abort
             T->>T: retry up to maxAttempts with jittered exponential backoff
@@ -201,9 +202,9 @@ runs whatever side-work makes sense during the wait, then calls
 `await pending.resolve(...)`. `resolve` polls
 `GET /pending/{correlationId}` every `pollIntervalMs` (default 2s)
 until the operator decides or the wall-clock deadline (default 10
-min) trips. Terminal transport failures (401, 404) re-throw
-immediately; transient ones (5xx, network blips) are swallowed
-between polls.
+min) trips. Only 5xx and network failures are transient and swallowed between
+polls. Malformed success bodies, correlation mismatches, and every other status
+re-throw immediately.
 
 ```mermaid
 sequenceDiagram
@@ -222,6 +223,7 @@ sequenceDiagram
         Poll->>L: GET /pending/{encodeURIComponent(correlationId)}
         alt 200
             L-->>Poll: ClavenarPendingView { correlation_id, agent_id, tool_type, method, review_reasons, requested_at, decided_at, decision, decider_note }
+            Poll->>Poll: validate shape and require correlation_id == requested id
             Poll-->>Pending: view
             alt view.decision == 'allow'
                 Pending-->>Partner: resolve (void)
@@ -230,7 +232,7 @@ sequenceDiagram
             else view.decision == null
                 Pending->>Pending: not decided yet — sleep min(pollIntervalMs, remaining)
             end
-        else 401 or 404 (terminal)
+        else malformed 200 or any non-5xx status (terminal)
             L-->>Poll: status
             Poll-->>Pending: throw ClavenarTransportError(status)
             Pending-->>Partner: re-throw immediately
@@ -326,7 +328,7 @@ flowchart TD
     Rd -->|deny within deadline| Rdn[throw ClavenarDenied with PendingDenied intent + decider_note]
     Rto[throw ClavenarTransportError — not decided within timeoutMs]
     Rd -->|deadline trip| Rto
-    Rd -->|401 or 404 terminal| Rterm[throw ClavenarTransportError immediately]
+    Rd -->|malformed / mismatch / non-5xx terminal| Rterm[throw ClavenarTransportError immediately]
 
     Obs --> Pass[response or stream chunks pass through to partner]
     Ok --> Pass

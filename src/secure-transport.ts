@@ -39,6 +39,8 @@ export class SecureTransportProfile {
   readonly requestTimeoutMs: number;
   private readonly config: SecureTransportConfig;
   private dispatcher: Dispatcher;
+  private lifecycle: Promise<void> = Promise.resolve();
+  private closed = false;
 
   constructor(config: SecureTransportConfig) {
     this.config = { ...config };
@@ -48,21 +50,42 @@ export class SecureTransportProfile {
   }
 
   async token(): Promise<string | undefined> {
+    if (this.closed) throw new ClavenarConfigError('secure transport profile is closed');
     const token = await this.config.tokenProvider?.();
     if (token === undefined) return undefined;
     const trimmed = token.trim();
     if (!trimmed) throw new ClavenarConfigError('secure transport token provider returned an empty token');
+    if (trimmed.includes('\r') || trimmed.includes('\n')) {
+      throw new ClavenarConfigError('secure transport token provider returned a multi-line token');
+    }
     return trimmed;
   }
 
-  reload(): void {
-    const replacement = this.buildDispatcher();
-    const previous = this.dispatcher;
-    this.dispatcher = replacement;
-    void previous.close();
+  reload(): Promise<void> {
+    const operation = this.lifecycle.then(async () => {
+      if (this.closed) throw new ClavenarConfigError('secure transport profile is closed');
+      const replacement = this.buildDispatcher();
+      const previous = this.dispatcher;
+      this.dispatcher = replacement;
+      await previous.close();
+    });
+    this.lifecycle = operation.catch(() => undefined);
+    return operation;
+  }
+
+  /** Close the active dispatcher after all prior reloads have completed. */
+  close(): Promise<void> {
+    const operation = this.lifecycle.then(async () => {
+      if (this.closed) return;
+      this.closed = true;
+      await this.dispatcher.close();
+    });
+    this.lifecycle = operation.catch(() => undefined);
+    return operation;
   }
 
   readonly fetch: typeof globalThis.fetch = async (input, init) => {
+    if (this.closed) throw new ClavenarConfigError('secure transport profile is closed');
     return undiciFetch(input as Parameters<typeof undiciFetch>[0], {
       ...(init as Parameters<typeof undiciFetch>[1]),
       dispatcher: this.dispatcher,
@@ -71,8 +94,17 @@ export class SecureTransportProfile {
 
   private validate(): void {
     const connect = this.config.connectTimeoutMs ?? 5_000;
-    if (connect <= 0 || this.requestTimeoutMs <= 0) {
-      throw new ClavenarConfigError('secure transport timeouts must be positive');
+    if (
+      !Number.isFinite(connect)
+      || !Number.isFinite(this.requestTimeoutMs)
+      || connect <= 0
+      || this.requestTimeoutMs <= 0
+      || connect > 300_000
+      || this.requestTimeoutMs > 300_000
+    ) {
+      throw new ClavenarConfigError(
+        'secure transport timeouts must be positive and no greater than 300000ms',
+      );
     }
     for (const [label, value] of [
       ['CA bundle', this.config.caBundlePath],
@@ -103,6 +135,11 @@ export class SecureTransportProfile {
       }
       if (url.protocol !== 'http:' && url.protocol !== 'https:') {
         throw new ClavenarConfigError('secure transport explicit proxy must use HTTP or HTTPS');
+      }
+      if (url.username || url.password || url.search || url.hash) {
+        throw new ClavenarConfigError(
+          'secure transport explicit proxy must not contain user info, a query, or a fragment',
+        );
       }
       return new ProxyAgent({ uri: url.toString(), requestTls: tls });
     }

@@ -18,6 +18,8 @@ export interface ClavenarOptions {
   timeoutMs?: number;
   /** Override the global fetch (testing). */
   fetch?: typeof fetch;
+  /** Permit credentialed plaintext only on an explicit loopback-IP DEV endpoint. */
+  allowInsecureLoopback?: boolean;
   /**
    * DANGEROUS: allow the provider SDK's `.stream()` helper
    * (`messages.stream()` / `chat.completions.stream()`) to pass

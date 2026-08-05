@@ -22,7 +22,7 @@ import type {
   OpenAIChatToolCall,
 } from './openai.js';
 import { wrapAnthropicStream, wrapOpenAIChatStream } from './stream.js';
-import { inspectToolUses, pollPendingOnce } from './transport.js';
+import { inspectToolUses, pollPendingOnce, validateTransportOptions } from './transport.js';
 import { emitDenyPanel } from './devmode.js';
 import type { NormalizedToolCall, ClavenarOptions } from './types.js';
 
@@ -117,7 +117,18 @@ function wrapAnthropic(client: AnthropicLike, opts: ClavenarOptions): AnthropicL
         if (isAsyncIterable(result)) {
           return wrapAnthropicStream(result as AsyncIterable<AnthropicMessageStreamEvent>, opts);
         }
-        const calls = extractAnthropicCalls(result as AnthropicMessage);
+        let calls: NormalizedToolCall[];
+        try {
+          calls = extractAnthropicCalls(result as AnthropicMessage);
+          if ((result as AnthropicMessage).stop_reason === 'tool_use' && calls.length === 0) {
+            throw new ClavenarConfigError(
+              'Anthropic response declared stop_reason=tool_use but no valid tool_use block was extracted',
+            );
+          }
+        } catch (error) {
+          await handleProviderShapeError(error, 'anthropic', opts);
+          return result as AnthropicMessage;
+        }
         await inspectAllToolCalls(calls, opts);
         return result as AnthropicMessage;
       };
@@ -144,7 +155,21 @@ function wrapOpenAIChat(client: OpenAIChatLike, opts: ClavenarOptions): OpenAICh
         if (isAsyncIterable(result)) {
           return wrapOpenAIChatStream(result as AsyncIterable<OpenAIChatCompletionChunk>, opts);
         }
-        const calls = extractOpenAIChatCalls(result as OpenAIChatCompletion);
+        let calls: NormalizedToolCall[];
+        try {
+          calls = extractOpenAIChatCalls(result as OpenAIChatCompletion);
+          const declared = (result as OpenAIChatCompletion).choices?.some(
+            (choice) => choice.finish_reason === 'tool_calls',
+          );
+          if (declared && calls.length === 0) {
+            throw new ClavenarConfigError(
+              'OpenAI response declared finish_reason=tool_calls but no valid tool call was extracted',
+            );
+          }
+        } catch (error) {
+          await handleProviderShapeError(error, 'openai', opts);
+          return result as OpenAIChatCompletion;
+        }
         await inspectAllToolCalls(calls, opts);
         return result as OpenAIChatCompletion;
       };
@@ -174,26 +199,62 @@ function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
 }
 
 function extractAnthropicCalls(result: AnthropicMessage): NormalizedToolCall[] {
-  const content = result.content ?? [];
-  return content.filter(isToolUseBlock).map((b) => ({
-    id: b.id,
-    name: b.name,
-    input: b.input,
-  }));
+  if (!result || !Array.isArray(result.content)) {
+    throw new ClavenarConfigError('Anthropic response is missing its content array');
+  }
+  const content = result.content;
+  const calls: NormalizedToolCall[] = [];
+  for (const block of content) {
+    if (block?.type !== 'tool_use') continue;
+    if (
+      !isToolUseBlock(block)
+      || typeof block.id !== 'string'
+      || !block.id
+      || typeof block.name !== 'string'
+      || !block.name
+      || !Object.hasOwn(block, 'input')
+    ) {
+      throw new ClavenarConfigError('Anthropic response contains a malformed tool_use block');
+    }
+    calls.push({ id: block.id, name: block.name, input: block.input });
+  }
+  return calls;
 }
 
 function extractOpenAIChatCalls(result: OpenAIChatCompletion): NormalizedToolCall[] {
-  const choices = result.choices ?? [];
+  if (!result || !Array.isArray(result.choices)) {
+    throw new ClavenarConfigError('OpenAI response is missing its choices array');
+  }
+  const choices = result.choices;
   const out: NormalizedToolCall[] = [];
   for (const choice of choices) {
+    if (!choice || typeof choice.message !== 'object' || choice.message === null) {
+      throw new ClavenarConfigError('OpenAI response contains a choice without a message');
+    }
     const calls = choice.message?.tool_calls;
     if (!Array.isArray(calls)) continue;
     for (const call of calls as OpenAIChatToolCall[]) {
-      if (!isOpenAIChatToolCall(call)) continue;
+      if (!isOpenAIChatToolCall(call)) {
+        throw new ClavenarConfigError('OpenAI response contains a malformed tool_call');
+      }
       out.push(normalizeChatToolCall(call));
     }
   }
   return out;
+}
+
+async function handleProviderShapeError(
+  error: unknown,
+  provider: string,
+  opts: ClavenarOptions,
+): Promise<void> {
+  if ((opts.mode ?? 'enforce') === 'enforce') throw error;
+  if (!opts.onPolicyError) return;
+  const detail = error instanceof Error ? error.message : String(error);
+  await opts.onPolicyError(
+    new ClavenarTransportError(`clavenar: ${provider} response shape was not inspectable: ${detail}`),
+    { toolName: '<unextractable>', toolUseId: '<unextractable>', toolInput: {} },
+  );
 }
 
 /**
@@ -273,18 +334,5 @@ async function inspectAllToolCalls(
 }
 
 function validateOptions(opts: ClavenarOptions): void {
-  if (!opts || typeof opts.endpoint !== 'string' || opts.endpoint.length === 0) {
-    throw new ClavenarConfigError('clavenarWrap: opts.endpoint is required');
-  }
-  try {
-    new URL(opts.endpoint);
-  } catch {
-    throw new ClavenarConfigError(`clavenarWrap: opts.endpoint is not a valid URL: ${opts.endpoint}`);
-  }
-  if (opts.timeoutMs !== undefined && (opts.timeoutMs <= 0 || !Number.isFinite(opts.timeoutMs))) {
-    throw new ClavenarConfigError('clavenarWrap: opts.timeoutMs must be a positive finite number');
-  }
-  if (opts.mode !== undefined && opts.mode !== 'enforce' && opts.mode !== 'observe') {
-    throw new ClavenarConfigError(`clavenarWrap: opts.mode must be 'enforce' or 'observe' (got '${opts.mode}')`);
-  }
+  validateTransportOptions(opts);
 }

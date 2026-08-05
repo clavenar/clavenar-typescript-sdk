@@ -132,10 +132,8 @@ export class ClavenarPending extends Error {
         view = await this._pollOnce();
       } catch (e) {
         if (e instanceof ClavenarTransportError) {
-          // 401 / 404 are terminal: auth misconfig, or the pending
-          // vanished. Surface immediately. Everything else (5xx,
-          // network blip) gets swallowed and we'll retry next tick.
-          if (e.status === 401 || e.status === 404) throw e;
+          // Only network failures and 5xx responses are transient.
+          if (e.status !== undefined && (e.status < 500 || e.status >= 600)) throw e;
         } else {
           throw e;
         }
@@ -208,6 +206,17 @@ export class ClavenarRateLimited extends Error {
 /** Thrown for malformed config — bad endpoint URL, missing client, etc. */
 export class ClavenarConfigError extends Error {
   override readonly name = 'ClavenarConfigError';
+}
+
+/** A persisted intent has no conclusive provider result and must be reconciled. */
+export class ClavenarRecoveryRequired extends Error {
+  override readonly name = 'ClavenarRecoveryRequired';
+  readonly idempotencyId: string;
+
+  constructor(idempotencyId: string) {
+    super(`clavenar execution ${idempotencyId} requires provider reconciliation`);
+    this.idempotencyId = idempotencyId;
+  }
 }
 
 /** Thrown when clavenar itself is unreachable or returns an unexpected shape. */

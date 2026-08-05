@@ -28,7 +28,7 @@ docker run -p 8088:8088 \
   ghcr.io/clavenar/clavenar-lite:0.12.0
 
 # 2. Install the SDK in your agent project.
-pnpm add @clavenar/agent-sdk@1.6.0 @anthropic-ai/sdk
+pnpm add @clavenar/agent-sdk@1.6.1 @anthropic-ai/sdk
 
 # 3. Wrap your client. The snippet below catches a deny verdict;
 #    in observe mode every call passes through and you read the
@@ -193,8 +193,8 @@ verdicts.
 ## Install
 
 ```sh
-pnpm add @clavenar/agent-sdk@1.6.0 @anthropic-ai/sdk     # Anthropic
-pnpm add @clavenar/agent-sdk@1.6.0 openai                # OpenAI
+pnpm add @clavenar/agent-sdk@1.6.1 @anthropic-ai/sdk     # Anthropic
+pnpm add @clavenar/agent-sdk@1.6.1 openai                # OpenAI
 ```
 
 `@anthropic-ai/sdk` and `openai` are peer dependencies — install
@@ -236,6 +236,11 @@ end-to-end against a local clavenar-lite:
 | `onPolicyError` | `(e, ctx) => void \| Promise<void>` | `undefined` | observe mode only — fires when clavenar inspection fails at the transport layer (unreachable, 5xx after retries, malformed body). The underlying agent call passes through regardless. In enforce mode the SDK throws `ClavenarTransportError` and this callback does not fire. |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | override for testing |
 | `retry` | `{ maxAttempts, baseDelayMs }` | `{ 3, 100 }` | network errors + 5xx retry with jittered exponential backoff. `maxAttempts: 1` disables. |
+| `allowInsecureLoopback` | `boolean` | `false` | allow bearer credentials over an exact loopback HTTP endpoint for local development only |
+
+Credential-bearing endpoints require HTTPS by default. Request and response
+sizes, tool-call batches, retry values, and identifiers are bounded before any
+network work begins.
 
 ### Exceptions
 
@@ -262,9 +267,31 @@ end-to-end against a local clavenar-lite:
     throw e;
   }
   ```
+  Only network failures and 5xx responses are transient while polling.
+  Malformed success bodies, correlation mismatches, and all other statuses are
+  terminal transport errors.
 - `ClavenarConfigError` — bad options passed to `clavenarWrap`.
 - `ClavenarTransportError` — clavenar ingress unreachable or returned an
   unexpected status / body shape. Carries `status` when known.
+- `ClavenarRecoveryRequired` — governed execution found a durable intent whose
+  provider effect is still ambiguous, so it refused to replay the effect.
+
+### Governed execution
+
+Use `executePreparedTool` when policy authorization and the provider effect
+must form a recoverable workflow. Its options require an application-owned
+`DurableExecutionStore`, a cryptographic `verifyAuthorization` callback, a
+receipt signer, and an executor that forwards the supplied idempotency ID to
+the provider. Authorization bindings are checked before an intent is committed
+or an effect is released.
+
+On restart, a stored completion is integrity-checked and returned. A stored
+intent is passed to `recoverEffect`; if recovery is absent or inconclusive, the
+SDK throws `ClavenarRecoveryRequired` instead of executing again. Completion
+plus receipt-outbox persistence is bounded by `finalizationTimeoutMs`.
+
+`SecureTransportProfile` reuses its dispatcher. Call `reload()` after rotating
+credential files and `close()` during application shutdown.
 
 ## Wire format
 

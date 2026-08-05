@@ -6,7 +6,7 @@ import type {
 import type { ClavenarVerdict, ClavenarVerdictContext } from '../src/types.js';
 
 function allowResponse(): Response {
-  return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(null, { status: 200 });
 }
 
 function denyResponse(toolName: string): Response {

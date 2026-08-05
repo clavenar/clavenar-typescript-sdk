@@ -11,6 +11,7 @@ export {
   ClavenarPending,
   ClavenarRateLimited,
   ClavenarConfigError,
+  ClavenarRecoveryRequired,
   ClavenarTransportError,
 } from './errors.js';
 export type {
@@ -40,6 +41,7 @@ export type {
   ExecutionEffect,
   ExecutionIntent,
   ExecutionReceipt,
+  ExecutionState,
   GovernedExecutionOptions,
   GovernedExecutionOutcome,
   PreparedToolRequest,

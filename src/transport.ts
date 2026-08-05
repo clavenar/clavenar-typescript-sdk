@@ -1,4 +1,4 @@
-import { ClavenarTransportError } from './errors.js';
+import { ClavenarConfigError, ClavenarTransportError } from './errors.js';
 import { randomUUID } from 'node:crypto';
 import type {
   NormalizedToolCall,
@@ -14,6 +14,14 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRY: ClavenarRetryOptions = { maxAttempts: 3, baseDelayMs: 100 };
+const MAX_RETRY_ATTEMPTS = 10;
+const MAX_RETRY_DELAY_MS = 60_000;
+const MAX_TIMEOUT_MS = 300_000;
+const MAX_RESPONSE_BODY_BYTES = 1 << 20;
+const MAX_ERROR_TEXT_BYTES = 4 << 10;
+const MAX_TOOL_ARGUMENT_BYTES = 1 << 20;
+const MAX_TOOL_BATCH_BYTES = 4 << 20;
+const MAX_TOOL_IDENTIFIER_BYTES = 1024;
 const CORRELATION_HEADER = 'x-clavenar-correlation-id';
 export const DECISION_CONTRACT = 'clavenar.decision/v1';
 export const DECISION_CONTRACT_HEADER = 'x-clavenar-decision-contract';
@@ -45,6 +53,8 @@ export async function inspectToolUse(
   toolCall: NormalizedToolCall,
   opts: ClavenarOptions,
 ): Promise<ClavenarVerdict> {
+  validateTransportOptions(opts);
+  validateToolCall(toolCall);
   const idempotencyId = newIdempotencyId();
   const body: ClavenarInspectRequest = {
     jsonrpc: '2.0',
@@ -60,15 +70,22 @@ export async function inspectToolUses(
   toolCalls: readonly NormalizedToolCall[],
   opts: ClavenarOptions,
 ): Promise<ClavenarVerdict> {
+  validateTransportOptions(opts);
   if (toolCalls.length < 1 || toolCalls.length > 128) {
     throw new ClavenarTransportError('atomic decision batch must contain 1..128 calls');
   }
   const ids = new Set<string>();
+  let totalArgumentBytes = 0;
   for (const call of toolCalls) {
+    validateToolCall(call);
     if (!call.id || !call.name || ids.has(call.id)) {
       throw new ClavenarTransportError('atomic decision batch requires unique non-empty call ids and names');
     }
     ids.add(call.id);
+    totalArgumentBytes += jsonBytes(call.input);
+    if (totalArgumentBytes > MAX_TOOL_BATCH_BYTES) {
+      throw new ClavenarConfigError('atomic decision arguments exceed the batch safety limit');
+    }
   }
   // A one-call turn has no siblings to coordinate. Keep its wire shape on the
   // universally supported concrete decision path; true sibling sets retain
@@ -97,6 +114,7 @@ async function inspectDecision(
   idempotencyId: string,
   opts: ClavenarOptions,
 ): Promise<ClavenarVerdict> {
+  validateTransportOptions(opts);
   if (opts.transportProfile && opts.fetch) {
     throw new ClavenarTransportError('transportProfile cannot be combined with a custom fetch');
   }
@@ -105,14 +123,22 @@ async function inspectDecision(
     throw new ClavenarTransportError('no fetch implementation available (Node 18+ or pass opts.fetch)');
   }
   const retry = opts.retry ?? DEFAULT_RETRY;
-  if (retry.maxAttempts < 1) {
-    throw new ClavenarTransportError(`retry.maxAttempts must be >= 1, got ${retry.maxAttempts}`);
+  let serializedBody: string;
+  try {
+    serializedBody = JSON.stringify(body);
+  } catch (error) {
+    throw new ClavenarConfigError(
+      `decision request must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (Buffer.byteLength(serializedBody, 'utf8') > MAX_TOOL_BATCH_BYTES + 64 * 1024) {
+    throw new ClavenarConfigError('decision request exceeds the safety limit');
   }
 
   let lastErr: ClavenarTransportError | undefined;
   for (let attempt = 0; attempt < retry.maxAttempts; attempt++) {
     try {
-      return await singleAttempt(body, idempotencyId, opts, fetchImpl);
+      return await singleAttempt(serializedBody, idempotencyId, opts, fetchImpl);
     } catch (e) {
       if (!(e instanceof ClavenarTransportError)) throw e;
       lastErr = e;
@@ -129,7 +155,7 @@ async function inspectDecision(
 }
 
 async function singleAttempt(
-  body: ClavenarInspectRequest | ClavenarAtomicBatchRequest,
+  body: string,
   idempotencyId: string,
   opts: ClavenarOptions,
   fetchImpl: typeof fetch,
@@ -151,7 +177,7 @@ async function singleAttempt(
     response = await fetchImpl(joinUrl(opts.endpoint, '/mcp'), {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body,
       signal: controller.signal,
     });
   } catch (e) {
@@ -164,9 +190,30 @@ async function singleAttempt(
     clearTimeout(timeoutId);
   }
 
+  const selectedContract = response.headers.get(DECISION_CONTRACT_HEADER);
+  if (selectedContract !== null && selectedContract !== DECISION_CONTRACT) {
+    throw new ClavenarTransportError(
+      'clavenar inspect: response selected an unexpected decision contract',
+      response.status,
+    );
+  }
+
   const correlationId = response.headers.get(CORRELATION_HEADER) ?? undefined;
 
   if (response.status === 200) {
+    const parsed = await parseOptionalJsonBody(response, 'clavenar 200');
+    if (parsed !== undefined) {
+      const envelope = parsed as Record<string, unknown>;
+      if (
+        typeof parsed !== 'object'
+        || parsed === null
+        || Array.isArray(parsed)
+        || Object.keys(envelope).length !== 1
+        || envelope['verdict'] !== 'allow'
+      ) {
+        throw new ClavenarTransportError('clavenar 200 with unexpected allow body', 200);
+      }
+    }
     return correlationId === undefined ? { kind: 'allow' } : { kind: 'allow', correlationId };
   }
 
@@ -182,6 +229,13 @@ async function singleAttempt(
     // The header is the load-bearing source of the correlation id —
     // it's set on *every* response. The body field is duplicated for
     // convenience but the header is authoritative.
+    if (
+      correlationId !== undefined
+      && payload.correlation_id.length > 0
+      && correlationId !== payload.correlation_id
+    ) {
+      throw new ClavenarTransportError('clavenar 202 correlation id header/body mismatch', 202);
+    }
     const corr = correlationId ?? payload.correlation_id;
     if (corr === undefined || corr.length === 0) {
       throw new ClavenarTransportError(
@@ -223,6 +277,10 @@ export async function pollPendingOnce(
   correlationId: string,
   opts: Pick<ClavenarOptions, 'endpoint' | 'token' | 'timeoutMs' | 'fetch' | 'transportProfile'>,
 ): Promise<ClavenarPendingView> {
+  validateTransportOptions(opts);
+  if (!correlationId || Buffer.byteLength(correlationId, 'utf8') > MAX_TOOL_IDENTIFIER_BYTES) {
+    throw new ClavenarConfigError('pending correlation id is required and must be bounded');
+  }
   if (opts.transportProfile && opts.fetch) {
     throw new ClavenarTransportError('transportProfile cannot be combined with a custom fetch');
   }
@@ -256,7 +314,14 @@ export async function pollPendingOnce(
   }
 
   if (response.status === 200) {
-    return parsePendingViewBody(response);
+    const view = await parsePendingViewBody(response);
+    if (view.correlation_id !== correlationId) {
+      throw new ClavenarTransportError(
+        'clavenar poll returned a different correlation id',
+        response.status,
+      );
+    }
+    return view;
   }
   const text = await safeReadText(response);
   throw new ClavenarTransportError(
@@ -287,7 +352,7 @@ function backoffMs(baseMs: number, attempt: number): number {
   // Prevents the synchronized-retry thundering-herd partners hit at
   // scale, while keeping the bound tight enough to be useful in a
   // single-tenant SDK.
-  const ceiling = baseMs * Math.pow(2, attempt);
+  const ceiling = Math.min(baseMs * Math.pow(2, attempt), MAX_RETRY_DELAY_MS);
   return ceiling * (0.5 + Math.random() * 0.5);
 }
 
@@ -296,13 +361,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function parsePendingBody(response: Response): Promise<ClavenarPendingResponse> {
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e);
-    throw new ClavenarTransportError(`clavenar 202 with unparseable body: ${reason}`, 202);
-  }
+  const parsed = await parseJsonBody(response, 'clavenar 202', 202);
   if (!isPendingResponse(parsed)) {
     throw new ClavenarTransportError(
       `clavenar 202 with unexpected body shape: ${JSON.stringify(parsed)}`,
@@ -323,13 +382,7 @@ function isPendingResponse(v: unknown): v is ClavenarPendingResponse {
 }
 
 async function parsePendingViewBody(response: Response): Promise<ClavenarPendingView> {
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e);
-    throw new ClavenarTransportError(`clavenar poll with unparseable body: ${reason}`, response.status);
-  }
+  const parsed = await parseJsonBody(response, 'clavenar poll', response.status);
   if (!isPendingView(parsed)) {
     throw new ClavenarTransportError(
       `clavenar poll with unexpected body shape: ${JSON.stringify(parsed)}`,
@@ -357,13 +410,7 @@ function isPendingView(v: unknown): v is ClavenarPendingView {
 }
 
 async function parseDenyBody(response: Response): Promise<ClavenarDenyResponse> {
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e);
-    throw new ClavenarTransportError(`clavenar 403 with unparseable body: ${reason}`, 403);
-  }
+  const parsed = await parseJsonBody(response, 'clavenar 403', 403);
   if (!isDenyResponse(parsed)) {
     throw new ClavenarTransportError(
       `clavenar 403 with unexpected body shape: ${JSON.stringify(parsed)}`,
@@ -431,13 +478,7 @@ function isDenyResponse(v: unknown): boolean {
 async function parseRateLimitBody(
   response: Response,
 ): Promise<import('./types.js').ClavenarRateLimitResponse> {
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e);
-    throw new ClavenarTransportError(`clavenar 429 with unparseable body: ${reason}`, 429);
-  }
+  const parsed = await parseJsonBody(response, 'clavenar 429', 429);
   if (!isDenyResponse(parsed)) {
     throw new ClavenarTransportError(
       `clavenar 429 with unexpected body shape: ${JSON.stringify(parsed)}`,
@@ -452,7 +493,13 @@ async function parseRateLimitBody(
       ? (r['reasons'] as unknown[]).filter((s): s is string => typeof s === 'string')
       : [],
   };
-  if (typeof r['retry_after_secs'] === 'number') out.retry_after_secs = r['retry_after_secs'];
+  if (
+    typeof r['retry_after_secs'] === 'number'
+    && Number.isSafeInteger(r['retry_after_secs'])
+    && r['retry_after_secs'] >= 0
+  ) {
+    out.retry_after_secs = r['retry_after_secs'];
+  }
   if (typeof r['layer'] === 'string') out.layer = r['layer'];
   if (typeof r['correlation_id'] === 'string') out.correlation_id = r['correlation_id'];
   return out;
@@ -460,9 +507,174 @@ async function parseRateLimitBody(
 
 async function safeReadText(response: Response): Promise<string> {
   try {
-    return await response.text();
-  } catch {
+    const bytes = await readBoundedBody(response, MAX_ERROR_TEXT_BYTES);
+    const preview = bytes.subarray(0, MAX_ERROR_TEXT_BYTES);
+    const text = new TextDecoder('utf-8')
+      .decode(preview)
+      .replace(/[\p{C}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return bytes.byteLength > preview.byteLength ? `${text}...` : text;
+  } catch (error) {
+    if (error instanceof ClavenarTransportError) throw error;
     return '';
+  }
+}
+
+async function parseOptionalJsonBody(response: Response, label: string): Promise<unknown | undefined> {
+  const bytes = await readBoundedBody(response);
+  if (bytes.byteLength === 0 || new TextDecoder().decode(bytes).trim() === '') return undefined;
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch (error) {
+    throw new ClavenarTransportError(
+      `${label} with unparseable body: ${error instanceof Error ? error.message : String(error)}`,
+      response.status,
+    );
+  }
+}
+
+async function parseJsonBody(response: Response, label: string, status: number): Promise<unknown> {
+  const parsed = await parseOptionalJsonBody(response, label);
+  if (parsed === undefined) {
+    throw new ClavenarTransportError(`${label} with empty body`, status);
+  }
+  return parsed;
+}
+
+async function readBoundedBody(
+  response: Response,
+  limit = MAX_RESPONSE_BODY_BYTES,
+): Promise<Uint8Array> {
+  const contentLength = response.headers.get('content-length');
+  if (contentLength !== null) {
+    const declared = Number(contentLength);
+    if (Number.isFinite(declared) && declared > limit) {
+      throw new ClavenarTransportError(
+        `response body exceeds ${limit} bytes`,
+        response.status,
+      );
+    }
+  }
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > limit) {
+        await reader.cancel();
+        throw new ClavenarTransportError(
+          `response body exceeds ${limit} bytes`,
+          response.status,
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function validateToolCall(call: NormalizedToolCall): void {
+  if (!call.id?.trim()) throw new ClavenarConfigError('tool call id is required');
+  if (!call.name?.trim()) throw new ClavenarConfigError('tool call name is required');
+  if (
+    Buffer.byteLength(call.id ?? '', 'utf8') > MAX_TOOL_IDENTIFIER_BYTES
+    || Buffer.byteLength(call.name, 'utf8') > MAX_TOOL_IDENTIFIER_BYTES
+  ) {
+    throw new ClavenarConfigError('tool call id or name exceeds the safety limit');
+  }
+  if (jsonBytes(call.input) > MAX_TOOL_ARGUMENT_BYTES) {
+    throw new ClavenarConfigError('tool call arguments exceed the safety limit');
+  }
+}
+
+function jsonBytes(value: unknown): number {
+  let encoded: string | undefined;
+  try {
+    encoded = JSON.stringify(value);
+  } catch (error) {
+    throw new ClavenarConfigError(
+      `tool call arguments must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (encoded === undefined) throw new ClavenarConfigError('tool call arguments must be valid JSON');
+  return Buffer.byteLength(encoded, 'utf8');
+}
+
+/** Validate every direct and wrapped transport entry point consistently. */
+export function validateTransportOptions(
+  opts: Pick<
+    ClavenarOptions,
+    | 'endpoint'
+    | 'token'
+    | 'transportProfile'
+    | 'fetch'
+    | 'timeoutMs'
+    | 'retry'
+    | 'mode'
+    | 'allowInsecureLoopback'
+  >,
+): void {
+  if (!opts || typeof opts.endpoint !== 'string' || !opts.endpoint) {
+    throw new ClavenarConfigError('endpoint is required');
+  }
+  let endpoint: URL;
+  try {
+    endpoint = new URL(opts.endpoint);
+  } catch {
+    throw new ClavenarConfigError('endpoint must be a valid absolute URL');
+  }
+  if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
+    throw new ClavenarConfigError('endpoint must use http or https');
+  }
+  if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new ClavenarConfigError('endpoint must not contain user info, a query, or a fragment');
+  }
+  if (opts.transportProfile && opts.fetch) {
+    throw new ClavenarConfigError('transportProfile cannot be combined with a custom fetch');
+  }
+  if (opts.token && opts.transportProfile) {
+    throw new ClavenarConfigError('token cannot be combined with transportProfile token acquisition');
+  }
+  if (
+    opts.token !== undefined
+    && (!opts.token.trim() || opts.token.includes('\r') || opts.token.includes('\n'))
+  ) {
+    throw new ClavenarConfigError('token must be non-empty and single-line');
+  }
+  if ((opts.token || opts.transportProfile) && endpoint.protocol !== 'https:') {
+    const loopback = endpoint.hostname === '127.0.0.1' || endpoint.hostname === '[::1]';
+    if (!opts.allowInsecureLoopback || !loopback) {
+      throw new ClavenarConfigError(
+        'credentials require https; plaintext is available only for explicitly enabled loopback development',
+      );
+    }
+  }
+  const timeoutMs = opts.timeoutMs ?? opts.transportProfile?.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
+    throw new ClavenarConfigError(`timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`);
+  }
+  const retry = opts.retry ?? DEFAULT_RETRY;
+  if (!Number.isInteger(retry.maxAttempts) || retry.maxAttempts < 1 || retry.maxAttempts > MAX_RETRY_ATTEMPTS) {
+    throw new ClavenarConfigError(`retry.maxAttempts must be between 1 and ${MAX_RETRY_ATTEMPTS}`);
+  }
+  if (!Number.isFinite(retry.baseDelayMs) || retry.baseDelayMs < 0 || retry.baseDelayMs > MAX_RETRY_DELAY_MS) {
+    throw new ClavenarConfigError(`retry.baseDelayMs must be between 0 and ${MAX_RETRY_DELAY_MS}`);
+  }
+  if (opts.mode !== undefined && opts.mode !== 'enforce' && opts.mode !== 'observe') {
+    throw new ClavenarConfigError("mode must be 'enforce' or 'observe'");
   }
 }
 

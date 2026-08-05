@@ -80,7 +80,7 @@ describe('normalizeRealtimeFunctionCall', () => {
 
 describe('inspectRealtimeFunctionCall', () => {
   it('returns allow on 200', async () => {
-    const fetch = vi.fn().mockResolvedValue(fakeResponse(200, {}));
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
     const verdict = await inspectRealtimeFunctionCall(done, { endpoint: 'http://w', fetch });
     expect(verdict).toEqual({ kind: 'allow' });
   });
@@ -98,7 +98,7 @@ describe('inspectRealtimeFunctionCall', () => {
   });
 
   it('sends a stable UUID as the decision envelope id', async () => {
-    const fetch = vi.fn().mockResolvedValue(fakeResponse(200, {}));
+    const fetch = vi.fn().mockResolvedValue(fakeResponse(200));
     await inspectRealtimeFunctionCall(done, { endpoint: 'http://w', fetch });
     const sent = JSON.parse(fetch.mock.calls[0]![1]!.body as string);
     expect(sent.id).toMatch(/^[0-9a-f-]{36}$/);

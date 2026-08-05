@@ -20,7 +20,7 @@ function makeMessage(content: AnthropicMessage['content']): AnthropicMessage {
 }
 
 function allowResponse(): Response {
-  return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(null, { status: 200 });
 }
 
 function denyResponse(toolName: string): Response {
@@ -161,7 +161,7 @@ describe('clavenarWrap (interception)', () => {
     await expect(wrapped.messages.create({})).rejects.toBe(upstream);
   });
 
-  it('handles a message with missing content array', async () => {
+  it('fails closed on a message with a missing content array', async () => {
     const message = { ...makeMessage([]) } as AnthropicMessage;
     delete (message as unknown as { content?: unknown }).content;
     const fetch = vi.fn();
@@ -169,7 +169,7 @@ describe('clavenarWrap (interception)', () => {
       { messages: { create: async () => message } },
       { endpoint: 'http://w', fetch },
     );
-    await expect(wrapped.messages.create({})).resolves.toBe(message);
+    await expect(wrapped.messages.create({})).rejects.toBeInstanceOf(ClavenarConfigError);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -445,6 +445,7 @@ describe('clavenarWrap (pending verdict throws ClavenarPending)', () => {
         decision: 'allow' as const,
         decider_note: null,
       }),
+      validateTransportOptions: () => undefined,
       joinUrl: (a: string, b: string) => `${a}/${b}`,
     }));
     const { clavenarWrap: wrapMocked, ClavenarPending: PendingMocked } = await import(
