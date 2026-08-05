@@ -198,20 +198,36 @@ async function singleAttempt(
     );
   }
 
-  const correlationId = response.headers.get(CORRELATION_HEADER) ?? undefined;
+  let correlationId = response.headers.get(CORRELATION_HEADER) ?? undefined;
 
   if (response.status === 200) {
     const parsed = await parseOptionalJsonBody(response, 'clavenar 200');
     if (parsed !== undefined) {
       const envelope = parsed as Record<string, unknown>;
-      if (
-        typeof parsed !== 'object'
-        || parsed === null
-        || Array.isArray(parsed)
-        || Object.keys(envelope).length !== 1
-        || envelope['verdict'] !== 'allow'
-      ) {
+      const keys = typeof parsed === 'object' && parsed !== null ? Object.keys(envelope) : [];
+      const legacyAllow = keys.length === 1 && envelope['verdict'] === 'allow';
+      const contractAllow =
+        keys.length === 4 &&
+        envelope['contract'] === DECISION_CONTRACT &&
+        envelope['decision'] === 'allow' &&
+        typeof envelope['correlation_id'] === 'string' &&
+        envelope['correlation_id'].length > 0 &&
+        envelope['executable'] === false;
+      if (!legacyAllow && !contractAllow) {
         throw new ClavenarTransportError('clavenar 200 with unexpected allow body', 200);
+      }
+      if (
+        contractAllow &&
+        correlationId !== undefined &&
+        correlationId !== envelope['correlation_id']
+      ) {
+        throw new ClavenarTransportError(
+          'clavenar 200 correlation id header/body mismatch',
+          200,
+        );
+      }
+      if (contractAllow && correlationId === undefined) {
+        correlationId = envelope['correlation_id'] as string;
       }
     }
     return correlationId === undefined ? { kind: 'allow' } : { kind: 'allow', correlationId };

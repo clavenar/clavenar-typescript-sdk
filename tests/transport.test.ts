@@ -50,6 +50,42 @@ describe('inspectToolUse', () => {
     expect(verdict).toEqual({ kind: 'allow' });
   });
 
+  it('accepts the exact side-effect-free decision envelope', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      fakeResponse(200, {
+        contract: 'clavenar.decision/v1',
+        decision: 'allow',
+        correlation_id: 'decision-correlation',
+        executable: false,
+      }),
+    );
+    const verdict = await inspectToolUse(toolUse, { endpoint: 'http://w', fetch });
+    expect(verdict).toEqual({ kind: 'allow', correlationId: 'decision-correlation' });
+  });
+
+  it('rejects a decision correlation mismatch', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          contract: 'clavenar.decision/v1',
+          decision: 'allow',
+          correlation_id: 'body-correlation',
+          executable: false,
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Clavenar-Correlation-Id': 'header-correlation',
+          },
+        },
+      ),
+    );
+    await expect(inspectToolUse(toolUse, { endpoint: 'http://w', fetch })).rejects.toThrow(
+      /correlation id header\/body mismatch/,
+    );
+  });
+
   it('fails closed on an arbitrary 200 body', async () => {
     const fetch = vi.fn().mockResolvedValue(
       fakeResponse(200, { verdict: 'allow', unexpected: true }),
