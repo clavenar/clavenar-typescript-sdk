@@ -23,11 +23,11 @@ jobs:
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9.15.9
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ matrix.node }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
@@ -47,6 +47,14 @@ jobs:
           repository: clavenar/clavenar-lite
           path: clavenar-lite
 
+      - name: Prepare isolated Rust state
+        run: |
+          state_root="$RUNNER_TEMP/typescript-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
+          mkdir -p "$state_root/cargo-home" "$state_root/rustup-home" "$state_root/cargo-target"
+          echo "CARGO_HOME=$state_root/cargo-home" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$state_root/rustup-home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$state_root/cargo-target" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           toolchain: 1.97.0
@@ -54,11 +62,11 @@ jobs:
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9.15.9
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.22.3
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
@@ -71,15 +79,16 @@ jobs:
           CLAVENAR_E2E_TOKEN: feature-matrix-agent
           CLAVENAR_E2E_DECIDE_TOKEN: feature-matrix-operator
         run: |
-          clavenar-lite/target/debug/clavenar-lite start \
+          log_file="$RUNNER_TEMP/clavenar-lite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.log"
+          "$CARGO_TARGET_DIR/debug/clavenar-lite" start \
             --port 8088 \
             --policies clavenar-lite/policies \
             --ledger :memory: \
             --upstream http://127.0.0.1:9 \
             --token "$CLAVENAR_E2E_TOKEN" \
-            --decide-token "$CLAVENAR_E2E_DECIDE_TOKEN" > /tmp/clavenar-lite.log 2>&1 &
+            --decide-token "$CLAVENAR_E2E_DECIDE_TOKEN" > "$log_file" 2>&1 &
           backend_pid=$!
-          trap 'kill "$backend_pid" 2>/dev/null || true; cat /tmp/clavenar-lite.log' EXIT
+          trap 'kill "$backend_pid" 2>/dev/null || true; cat "$log_file"' EXIT
           for _ in $(seq 1 60); do
             curl --fail --silent http://127.0.0.1:8088/readyz >/dev/null && break
             sleep 1
@@ -100,11 +109,11 @@ jobs:
           # pnpm 11 uses npm's current bulk-advisory API. Keep the test
           # matrix on pnpm 9 so the published Node 18 floor remains covered.
           version: 11.4.0
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.22.3
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
