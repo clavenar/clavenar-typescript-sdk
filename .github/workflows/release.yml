@@ -97,7 +97,9 @@ jobs:
             if [ -n "$existing" ]; then
               test "$existing" = "$SOURCE_SHA"
             else
-              git push origin "$SOURCE_SHA:refs/tags/$tag"
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                --field ref="refs/tags/$tag" \
+                --field sha="$SOURCE_SHA" >/dev/null
             fi
             gh release create "$tag" --verify-tag \
               --title "$tag — @clavenar/agent-sdk" \
