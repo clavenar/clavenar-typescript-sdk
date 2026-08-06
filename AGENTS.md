@@ -24,8 +24,14 @@ Run: library, no binary. Public entry `clavenarWrap(client, opts)`. No listener 
 - `src/anthropic.ts` / `src/openai.ts` — provider-shape types + tool-call normalizers. No provider import; shapes are mirrored and narrowed.
 - `src/realtime.ts` — standalone OpenAI Realtime helper (inspects `response.function_call_arguments.done`).
 - `src/transport.ts` — `inspectToolUse` (`POST /mcp` JSON-RPC, retry/backoff, correlation-id capture) + `pollPendingOnce` (`GET /pending/{correlation_id}` HIL poll, no retry).
+- `src/governed-execution.ts` — durable intent/effect/completion orchestration
+  and uncertain-outcome recovery.
+- `src/secure-transport.ts` — reusable mTLS/token dispatcher with atomic
+  complete-snapshot reload.
 - `src/stream.ts` — streaming inspection; holds the close event until clavenar returns a verdict.
-- `src/errors.ts` — `ClavenarDenied` / `ClavenarPending` / `ClavenarConfigError` / `ClavenarTransportError`.
+- `src/errors.ts` — `ClavenarDenied` / `ClavenarPending` /
+  `ClavenarRateLimited` / `ClavenarRecoveryRequired` /
+  `ClavenarConfigError` / `ClavenarTransportError`.
 - `src/devmode.ts` — `renderDenyPanel` (pure: builds the deny-panel string) / `emitDenyPanel` (writes it to stderr when `devMode`).
 - `src/types.ts` — `ClavenarOptions` + wire types.
 - `tests/*.test.ts` — vitest; `e2e.test.ts` skips unless `CLAVENAR_E2E_ENDPOINT` is set.
@@ -38,6 +44,10 @@ Run: library, no binary. Public entry `clavenarWrap(client, opts)`. No listener 
 - **Structural detection, once at wrap time.** `messages.create` ⇒ Anthropic, `chat.completions.create` ⇒ OpenAI; every other property (`beta`, `models`, subclasses) passes through the `Proxy` unchanged. Anything unrecognized is rejected with `ClavenarConfigError`.
 - **No provider runtime dependency.** `@anthropic-ai/sdk` and `openai` are optional peer deps — never turn either into a hard import. Mirror upstream shapes in `anthropic.ts` / `openai.ts` / `realtime.ts` and narrow `unknown` at the boundary.
 - **Wire.** `POST {endpoint}/mcp`, JSON-RPC 2.0 `tools/call`. The provider tool-call id (`toolu_*` / `call_*`) round-trips verbatim as the JSON-RPC `id` so one ledger lookup correlates back to the model's call. `200`/`403` are verdicts and never retry; `202` parks the call for human review (pending verdict) — the caller then polls `GET /pending/{correlation_id}` until `decision` flips (`ClavenarPending.resolve`) and, like `200`/`403`, it never retries; network errors + `5xx` retry with jittered exponential backoff (default 3 attempts); other `4xx` are config errors and never retry.
+- **Decision retries never repeat effects.** The `client-migration-v1` and
+  `retry-separation-v1` fixtures pin the boundary. Governed execution recovers
+  by durable idempotency state or throws `ClavenarRecoveryRequired`; it never
+  blindly invokes the provider again after uncertainty.
 - **`devMode` / verbose-verdict `detail` is an attacker oracle** — dev/staging only. The SDK trusts the endpoint at `opts.endpoint`; a reachable but hostile ingress can silently allow denied calls.
 
 Coding standards (TypeScript):
@@ -45,8 +55,6 @@ Coding standards (TypeScript):
 - ESM with explicit `.js` specifiers on relative imports (e.g. `./wrap.js`) — keep the extension.
 - ESLint flat config = `js.recommended` + `typescript-eslint` recommended + `eslint-config-prettier` last; `lint` must be clean in CI. `@typescript-eslint/no-explicit-any` is `warn` (boundary narrowing of provider `unknown` is intentional) — don't introduce new `any` without cause.
 - Tests colocated in `tests/` as `*.test.ts`; keep e2e env-gated so the suite runs offline.
-- After adding or updating a feature, also update the relevant `MANUAL_TESTS*`
-  file(s) when needed.
 - Commit subjects must start with a lowercase letter.
 
 ## Pointers
