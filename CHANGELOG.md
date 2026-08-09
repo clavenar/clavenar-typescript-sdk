@@ -7,6 +7,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-08-09
+
+### Changed
+
+- Keep the protected npm publication environment warning-clean during
+  validation, packing, and idempotent release retries.
+
 ## [1.6.1] - 2026-08-05
 
 ### Added

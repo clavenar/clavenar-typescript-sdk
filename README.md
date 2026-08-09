@@ -28,7 +28,7 @@ docker run -p 8088:8088 \
   ghcr.io/clavenar/clavenar-lite:0.12.0
 
 # 2. Install the SDK in your agent project.
-pnpm add @clavenar/agent-sdk@1.6.1 @anthropic-ai/sdk
+pnpm add @clavenar/agent-sdk@1.6.2 @anthropic-ai/sdk
 
 # 3. Wrap your client. The snippet below catches a deny verdict;
 #    in observe mode every call passes through and you read the
@@ -193,8 +193,8 @@ verdicts.
 ## Install
 
 ```sh
-pnpm add @clavenar/agent-sdk@1.6.1 @anthropic-ai/sdk     # Anthropic
-pnpm add @clavenar/agent-sdk@1.6.1 openai                # OpenAI
+pnpm add @clavenar/agent-sdk@1.6.2 @anthropic-ai/sdk     # Anthropic
+pnpm add @clavenar/agent-sdk@1.6.2 openai                # OpenAI
 ```
 
 `@anthropic-ai/sdk` and `openai` are peer dependencies — install
