@@ -7,6 +7,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-08-15
+
+### Changed
+
+- Bind protected stack publication to the current reviewed security and
+  release-contract source.
+
 ## [1.6.2] - 2026-08-09
 
 ### Changed
