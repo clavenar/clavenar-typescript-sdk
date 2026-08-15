@@ -175,7 +175,7 @@ block / OpenAI `tool_calls` entry) is sent to clavenar-lite's
 `POST /mcp` with `x-clavenar-decision-contract: clavenar.decision/v1` for
 side-effect-free inspection. Each request gets a client-generated UUID before
 the first network attempt, and multi-tool turns use one ordered atomic-batch
-decision. Proxy 0.5.0 and Lite 0.9.0 reject unselected tool calls with HTTP 426;
+decision. Proxy 1.0.0 and Lite 1.0.0 reject unselected tool calls with HTTP 426;
 upgrade this SDK before the gateway by following
 <https://clavenar.com/docs/sdk-migration/>. The verdict drives:
 
