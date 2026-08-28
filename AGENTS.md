@@ -8,11 +8,15 @@ pnpm build        # tsup → dist/{index.mjs, index.cjs, index.d.ts}
 pnpm test         # vitest run
 pnpm lint         # eslint .
 pnpm typecheck    # tsc --noEmit
+pnpm audit --prod --audit-level high
+npx --yes @cyclonedx/cdxgen@12.7.1 -t js -o bom.json .
 ```
 CI (`.github/workflows/ci.yml`) runs `install → lint → typecheck → test → build` on node 18/20/22. `prepublishOnly` reruns the full chain.
 CI also builds a clean `clavenar-lite` checkout and runs the env-gated E2E
 suite against that live backend, including deny, authentication, and pending
-approve/deny round trips.
+approve/deny round trips. That job is live-infrastructure validation: use its
+workflow setup and set `CLAVENAR_E2E_ENDPOINT`; it is not part of the default
+offline `pnpm test` path.
 The supply-chain job runs pnpm 11 on Node 22 so registry audits use npm's
 current bulk-advisory API; `pnpm-workspace.yaml` explicitly allows only the
 `esbuild` lifecycle scripts required by this package's pinned build toolchain.
@@ -58,4 +62,6 @@ Coding standards (TypeScript):
 - Commit subjects must start with a lowercase letter.
 
 ## Pointers
-README.md · SECURITY.md · docs/SEQUENCES.md (five primary-path sequence diagrams + request decision-tree flowchart) · CHANGELOG.md.
+
+[README](README.md) · [security policy](SECURITY.md) ·
+[sequence diagrams](docs/SEQUENCES.md) · [changelog](CHANGELOG.md).
